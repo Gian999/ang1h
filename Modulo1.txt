@@ -1,0 +1,771 @@
+Desarrolla el Módulo 1 de una aplicación de Transporte Colectivo Inteligente para la ciudad de Juliaca, Perú. El público objetivo son pasajeros de microbuses. La aplicación debe ser mobile-first (iOS/Android) con una variante web responsiva.
+
+Framework: Angular 20  
+Lenguaje de la aplicación: Español (Perú)  
+Mapas: OpenLayers (integración obligatoria)  
+Estilos: Tailwind CSS + Angular Material (opcional para componentes específicos)
+
+---
+
+Objetivo del Módulo
+
+Permitir que un usuario:
+
+Se registre con:
+DNI (8 dígitos - formato peruano)
+Nombres y apellidos
+Fecha de nacimiento
+Email
+Celular (9 dígitos con prefijo +51)
+Distrito/ciudad
+
+Obtenga una tarjeta:
+Tarjeta virtual: Se crea automáticamente al registrarse con QR único
+Tarjeta física: Se puede emitir en sede y vincular a su cuenta escaneando el QR de la tarjeta
+
+Recargue saldo:
+Desde app móvil o web (recarga digital)
+En sede autorizada (generando código)
+Métodos: Tarjeta de débito/crédito, billetera digital (Yape, Plin), o en sede
+
+Pague el pasaje con QR:
+Muestra su QR personal para que el cobrador lo valide
+Tarifas: Adulto S/1.00, Escolar S/0.50
+Multipago: Pagar por 2+ personas en una sola operación (selector de cantidad por tipo)
+
+Consulte:
+Saldo actual
+Movimientos/historial (recargas, pasajes, vinculaciones)
+Tarjetas vinculadas
+
+Geolocalización:
+Permitir al usuario activar su ubicación GPS
+Mostrar su ubicación actual en un mapa con OpenLayers
+Visualizar su posición en tiempo real
+(Preparar base para futuras funcionalidades: ver buses cercanos, paradas, rutas)
+
+---
+
+Especificaciones Técnicas
+
+Stack Tecnológico
+Angular 20 (Standalone Components recomendado)
+TypeScript (strict mode)
+Tailwind CSS para estilos
+OpenLayers para mapas interactivos
+RxJS para manejo de estado y streams
+Angular Router para navegación
+Angular Forms (Reactive Forms)
+LocalStorage/IndexedDB para modo offline
+
+OpenLayers - Integración de Mapas
+
+Instalar:
+```bash
+npm install ol
+npm install --save-dev @types/ol
+```
+
+Funcionalidades requeridas:
+Mapa base: Usar OpenStreetMap o CartoDB
+Marker de usuario: Mostrar ubicación del usuario en tiempo real
+Controles: Zoom, rotación, escala
+Geolocalización: Botón para centrar el mapa en la ubicación del usuario
+Permisos: Solicitar permisos de ubicación y manejar estados (permitido, denegado, no soportado)
+Coordenadas de Juliaca: Centrar inicialmente en `-15.5, -70.13` (Juliaca, Perú)
+
+Componente de Mapa Esperado:
+```typescript
+// map.component.ts
+Inicializar mapa con OpenLayers
+Agregar capa de OpenStreetMap
+Implementar Geolocation API del navegador
+Crear marker personalizado para usuario
+Actualizar posición en tiempo real
+Manejar errores de geolocalización
+Estados: cargando, ubicado, error, permiso denegado
+```
+
+---
+
+Identidad Visual y Marca
+
+Colores (Tailwind config)
+```javascript
+colors: {
+  primary: '#2563EB',      // Azul principal
+  secondary: '#059669',    // Verde (recargas, éxito)
+  background: '#F8FAFC',   // Gris muy claro (fondo)
+  emphasis: '#F59E0B',     // Ámbar (alertas, acciones secundarias)
+  error: '#DC2626',        // Rojo para errores
+  success: '#059669',      // Verde para éxitos
+}
+```
+
+Tipografía
+Principal: Inter o Roboto
+Tamaños mínimos: 14pt (16px) para legibilidad
+Evitar usar clases de Tailwind para `font-size`, `font-weight`, `line-height` a menos que sea necesario
+
+Tono
+Cívico/municipal
+Accesible y claro
+Mensajes en español peruano (usar "celular" no "móvil", "distrito" no "barrio")
+
+---
+
+Reglas de Negocio y Validaciones
+
+DNI (Perú)
+8 dígitos numéricos
+Validación en tiempo real
+Sin letras ni caracteres especiales
+Máscara: `12345678`
+
+Celular (Perú)
+9 dígitos (formato: 987654321)
+Prefijo: +51 (mostrado pero no editable)
+Validación: debe comenzar con 9
+Input con máscara
+
+Email
+Validación RFC 5322
+Requerido y único por cuenta
+
+Contraseña
+Mínimo 6 caracteres
+Confirmación obligatoria en registro
+No mostrar complejidad excesiva (UX simple)
+
+Tarifas
+```typescript
+const TARIFAS = {
+  ADULTO: 1.00,
+  ESCOLAR: 0.50
+};
+```
+
+Multipago
+Mínimo: 1 pasajero
+Máximo: 10 pasajeros por transacción
+Stepper numérico para selección
+Validar saldo suficiente antes de generar QR
+
+---
+
+Arquitectura Angular
+
+Estructura de Carpetas Sugerida
+```
+src/
+├── app/
+│   ├── core/                    # Servicios singleton, guards, interceptors
+│   │   ├── services/
+│   │   │   ├── auth.service.ts
+│   │   │   ├── card.service.ts
+│   │   │   ├── transaction.service.ts
+│   │   │   ├── geolocation.service.ts
+│   │   │   └── storage.service.ts
+│   │   ├── guards/
+│   │   │   └── auth.guard.ts
+│   │   └── models/
+│   │       ├── user.model.ts
+│   │       ├── card.model.ts
+│   │       └── transaction.model.ts
+│   ├── shared/                  # Componentes reutilizables
+│   │   ├── components/
+│   │   │   ├── dni-input/
+│   │   │   ├── balance-card/
+│   │   │   ├── qr-code/
+│   │   │   ├── numeric-stepper/
+│   │   │   ├── amount-selector/
+│   │   │   ├── ticket/
+│   │   │   ├── transaction-list/
+│   │   │   └── map/             # Componente OpenLayers
+│   │   ├── directives/
+│   │   └── pipes/
+│   ├── features/                # Módulos por funcionalidad
+│   │   ├── auth/
+│   │   │   ├── pages/
+│   │   │   │   ├── welcome/
+│   │   │   │   ├── register/
+│   │   │   │   └── login/
+│   │   │   └── auth-routing.module.ts
+│   │   ├── card/
+│   │   │   ├── pages/
+│   │   │   │   ├── my-card/
+│   │   │   │   ├── recharge/
+│   │   │   │   ├── pay-fare/
+│   │   │   │   └── movements/
+│   │   │   └── card-routing.module.ts
+│   │   ├── profile/
+│   │   │   ├── pages/
+│   │   │   │   └── profile/
+│   │   │   └── profile-routing.module.ts
+│   │   └── map/
+│   │       ├── pages/
+│   │       │   └── map-view/
+│   │       └── map-routing.module.ts
+│   ├── app.component.ts
+│   ├── app.routes.ts
+│   └── app.config.ts
+├── assets/
+├── environments/
+└── styles/
+    └── tailwind.css
+```
+
+---
+
+Flujo de Pantallas
+
+1. Welcome (Página de Bienvenida)
+Ruta: `/`
+
+Contenido:
+Título: "Transporte Colectivo Inteligente - Juliaca"
+Ícono de bus grande
+Descripción: "Viaja de forma rápida, segura y sin efectivo"
+3 cards con features:
+Pago con QR
+100% Digital
+Multipago
+Botones:
+"Crear cuenta" (primary) → `/auth/register`
+"Iniciar sesión" (outline) → `/auth/login`
+
+---
+
+2. Register (Registro - 3 pasos)
+Ruta: `/auth/register`
+
+Paso 1: Datos personales
+DNI (8 dígitos con validación)
+Nombres
+Apellidos
+Fecha de nacimiento (date picker)
+Botón: "Continuar"
+
+Paso 2: Datos de contacto
+Email
+Celular (+51 | 9 dígitos)
+Distrito/ciudad (select o input)
+Botón: "Continuar"
+
+Paso 3: Seguridad
+Contraseña
+Confirmar contraseña
+Checkbox: "Acepto términos y condiciones" (obligatorio)
+Botón: "Crear cuenta"
+
+Progreso visual: Barra de progreso con 3 pasos (33%, 66%, 100%)
+
+Al completar:
+Crear automáticamente tarjeta virtual
+Generar QR único del usuario
+Toast: "¡Registro exitoso! Tu tarjeta virtual ha sido creada"
+Navegar a: `/card/my-card`
+
+---
+
+3. Login (Inicio de Sesión)
+Ruta: `/auth/login`
+
+Campos:
+DNI o Email
+Contraseña
+Link: "¿Olvidaste tu contraseña?"
+
+Botón: "Iniciar sesión"
+
+Demo credentials:
+```
+DNI: 12345678
+Contraseña: demo123
+```
+
+---
+
+4. My Card (Mi Tarjeta)
+Ruta: `/card/my-card`
+
+Header:
+Avatar del usuario
+Saludo: "Hola, [Nombre]"
+Menú hamburguesa → Perfil
+
+Contenido:
+Balance Card:
+Saldo actual (grande): "S/ 15.50"
+Número de tarjeta: "•••• 5678"
+Botones principales:
+"Recargar" (verde) → `/card/recharge`
+"Pagar pasaje" (azul) → `/card/pay-fare`
+QR personal (card):
+Código QR grande
+Texto: "Muestra este código al validador"
+Acciones rápidas:
+Ver movimientos → `/card/movements`
+Vincular tarjeta física
+Ver mapa (nuevo) → `/map` 🗺️
+
+---
+
+5. Map View (Mapa con OpenLayers) 🆕
+Ruta: `/map`
+
+Componentes:
+Mapa OpenLayers (pantalla completa)
+Botón de Geolocalización:
+Ícono de ubicación
+Al hacer clic: solicitar permisos y centrar mapa
+Estados:
+Cargando: Spinner
+Ubicado: Marker azul en posición del usuario
+Error: Toast con mensaje de error
+Permiso denegado: Toast + instrucciones para habilitar
+
+Funcionalidades:
+Mapa centrado en Juliaca por defecto
+Botón floating "Mi ubicación" (bottom-right)
+Marker personalizado del usuario (color primario)
+Actualización en tiempo real (cada 5 segundos)
+Controles de zoom
+Escala del mapa
+
+Preparar para futuro (comentado en código):
+Capa de buses en tiempo real
+Capa de paradas
+Capa de rutas
+
+---
+
+6. Recharge (Recarga de Saldo)
+Ruta: `/card/recharge`
+
+Header: 
+Título: "Recargar saldo"
+Saldo actual: "S/ 15.50"
+
+Selector de monto:
+Botones rápidos: S/2, S/5, S/10, S/20, S/50
+Input personalizado: "Otro monto"
+
+Métodos de pago (Radio buttons):
+Tarjeta de débito/crédito (ícono tarjeta)
+Billetera digital - Yape, Plin (ícono celular)
+En sede autorizada - Genera código (ícono ubicación)
+
+Resumen:
+Monto a recargar: S/ XX.XX
+Comisión: S/ 0.00
+Total: S/ XX.XX
+
+Botón: 
+Si es digital: "Pagar S/ XX.XX"
+Si es sede: "Generar código"
+
+Al completar:
+Actualizar saldo
+Crear transacción de tipo "recarga"
+Mostrar ticket → `/card/ticket`
+
+---
+
+7. Pay Fare (Pagar Pasaje - Multipago)
+Ruta: `/card/pay-fare`
+
+Header:
+Título: "Pagar pasaje"
+Saldo: "S/ 15.50"
+
+Info box (azul):
+"Multipago activado - Puedes pagar por varias personas"
+
+Selección de pasajeros:
+
+Adultos (S/ 1.00 c/u):
+Label: "Adultos" + "S/ 1.00 por persona"
+Numeric stepper: [-] [1] [+]
+Total parcial: "S/ 1.00"
+
+Escolares (S/ 0.50 c/u):
+Label: "Escolares" + "S/ 0.50 por persona"
+Numeric stepper: [-] [0] [+]
+Total parcial: "S/ 0.00"
+
+Resumen:
+Total de pasajeros: 1
+Total a pagar: S/ 1.00
+(Si saldo insuficiente: mensaje de error)
+
+Botón: "Generar QR de pago"
+
+Modal QR:
+QR code grande
+Resumen de la transacción
+Texto: "Muestra este código al cobrador"
+Botón demo: "Simular pago exitoso"
+
+Al completar:
+Descontar del saldo
+Crear transacción de tipo "pasaje"
+Mostrar ticket → `/card/ticket`
+
+---
+
+8. Ticket (Comprobante)
+Ruta: `/card/ticket`
+
+Tipos: `recarga` o `pago`
+
+Contenido:
+Ícono de check (verde)
+Título: "Recarga exitosa" / "Pago realizado"
+Monto grande: "S/ XX.XX"
+Detalles:
+Items de la transacción
+ID de transacción
+Fecha y hora
+Botones:
+"Compartir"
+"Descargar"
+Botón: "Finalizar" → Volver a `/card/my-card`
+
+---
+
+9. Movements (Historial de Movimientos)
+Ruta: `/card/movements`
+
+Filtros (Tabs):
+Todos
+Hoy
+7 días
+30 días
+
+Filtros por tipo (Chips):
+Todos
+Recargas (verde)
+Pasajes (azul)
+
+Lista de transacciones:
+Cada item muestra:
+Ícono según tipo
+Título: "Recarga" / "Pasaje" / "Vinculación"
+Descripción + Ruta (si aplica)
+Fecha y hora
+Monto (+ verde para recargas, negro para pagos)
+
+Empty state:
+"No hay movimientos para mostrar"
+
+---
+
+10. Profile (Perfil de Usuario)
+Ruta: `/profile`
+
+Header:
+Avatar con iniciales
+Nombre completo
+DNI
+
+Datos personales (card):
+Email
+Celular
+Distrito
+
+Opciones (lista):
+Datos personales (editar)
+Seguridad (cambiar contraseña)
+Tarjetas vinculadas
+Notificaciones
+Ayuda y soporte
+
+Botón: "Cerrar sesión" (rojo, con confirmación)
+
+---
+
+Componentes Reutilizables
+
+1. DNI Input Component
+```typescript
+@Component({
+  selector: 'app-dni-input',
+  standalone: true,
+})
+export class DniInputComponent {
+  @Input() label = 'DNI';
+  @Output() valueChange = new EventEmitter<string>();
+  
+  // Validación: solo números, máx 8 dígitos
+  // Estados: válido (8 dígitos), incompleto, error
+}
+```
+
+2. Balance Card Component
+```typescript
+@Component({
+  selector: 'app-balance-card',
+})
+export class BalanceCardComponent {
+  @Input() balance: number;
+  @Input() cardNumber: string;
+  
+  // Gradiente azul, ícono wallet, saldo grande
+}
+```
+
+3. QR Code Component
+```typescript
+@Component({
+  selector: 'app-qr-code',
+})
+export class QrCodeComponent {
+  @Input() value: string;
+  @Input() size = 200;
+  @Input() label: string;
+  
+  // Usar API externa o librería qrcode
+  // URL: https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=VALUE
+}
+```
+
+4. Numeric Stepper Component
+```typescript
+@Component({
+  selector: 'app-numeric-stepper',
+})
+export class NumericStepperComponent {
+  @Input() value: number;
+  @Input() min = 0;
+  @Input() max = 10;
+  @Input() label: string;
+  @Output() valueChange = new EventEmitter<number>();
+  
+  // Botones [-] y [+], valor en el centro
+}
+```
+
+5. Amount Selector Component
+```typescript
+@Component({
+  selector: 'app-amount-selector',
+})
+export class AmountSelectorComponent {
+  @Input() quickAmounts = [2, 5, 10, 20, 50];
+  @Output() amountChange = new EventEmitter<number>();
+  
+  // Grid de botones + input personalizado
+}
+```
+
+6. Transaction List Component
+```typescript
+@Component({
+  selector: 'app-transaction-list',
+})
+export class TransactionListComponent {
+  @Input() transactions: Transaction[];
+  
+  // Lista con íconos según tipo, colores, fechas
+}
+```
+
+7. Map Component (OpenLayers) 🆕
+```typescript
+@Component({
+  selector: 'app-map',
+  standalone: true,
+})
+export class MapComponent implements OnInit, OnDestroy {
+  private map!: Map;
+  private userMarker!: Feature;
+  private geolocationService = inject(GeolocationService);
+  
+  ngOnInit() {
+    this.initMap();
+    this.watchUserLocation();
+  }
+  
+  private initMap() {
+    // Crear mapa OpenLayers
+    // Centro: Juliaca [-15.5, -70.13]
+    // Zoom: 13
+    // Capa: OSM
+  }
+  
+  private watchUserLocation() {
+    // Geolocation API
+    // Actualizar marker cada 5s
+    // Manejar errores
+  }
+  
+  centerOnUser() {
+    // Centrar mapa en posición del usuario
+  }
+}
+```
+
+---
+
+Servicios Angular
+
+1. AuthService
+```typescript
+@Injectable({ providedIn: 'root' })
+export class AuthService {
+  private currentUser = signal<User | null>(null);
+  
+  register(userData: RegisterDto): Observable<User>
+  login(credentials: LoginDto): Observable<User>
+  logout(): void
+  isAuthenticated(): boolean
+}
+```
+
+2. CardService
+```typescript
+@Injectable({ providedIn: 'root' })
+export class CardService {
+  private balance = signal<number>(0);
+  
+  getBalance(): Signal<number>
+  recharge(amount: number, method: string): Observable<Transaction>
+  payFare(adultos: number, escolares: number): Observable<Transaction>
+  getCard(): Observable<Card>
+}
+```
+
+3. TransactionService
+```typescript
+@Injectable({ providedIn: 'root' })
+export class TransactionService {
+  private transactions = signal<Transaction[]>([]);
+  
+  getTransactions(): Signal<Transaction[]>
+  addTransaction(transaction: Transaction): void
+  filterByDate(filter: 'today' | '7days' | '30days'): Transaction[]
+  filterByType(type: 'all' | 'recarga' | 'pasaje'): Transaction[]
+}
+```
+
+4. GeolocationService 🆕
+```typescript
+@Injectable({ providedIn: 'root' })
+export class GeolocationService {
+  private currentPosition = signal<GeolocationPosition | null>(null);
+  private error = signal<GeolocationPositionError | null>(null);
+  
+  getCurrentPosition(): Observable<GeolocationPosition>
+  watchPosition(): Observable<GeolocationPosition>
+  stopWatching(): void
+  
+  // Manejar permisos
+  requestPermission(): Promise<PermissionStatus>
+}
+```
+
+5. StorageService (Offline)
+```typescript
+@Injectable({ providedIn: 'root' })
+export class StorageService {
+  saveToLocal(key: string, value: any): void
+  getFromLocal(key: string): any
+  clearLocal(): void
+  
+  // Para soportar modo offline
+  // Cachear saldo, movimientos, datos de usuario
+}
+```
+
+---
+
+Manejo de Estado Offline
+
+Requerimientos:
+Cachear saldo actual en LocalStorage
+Cachear últimos 50 movimientos
+Cola de operaciones pendientes (recargas/pagos fallidos)
+Mostrar indicador visual de "Modo offline"
+Reintentar operaciones cuando vuelva conexión
+
+Implementar:
+Interceptor HTTP para detectar errores de red
+Service Worker para caché offline (opcional)
+IndexedDB para almacenamiento más robusto
+
+---
+
+Accesibilidad
+
+Requisitos:
+Tamaños táctiles ≥ 44px (11 unidades Tailwind = `w-11 h-11`)
+Contraste WCAG AA mínimo (4.5:1)
+Labels asociados a todos los inputs
+Estados de error claros y descriptivos
+Aria-labels en íconos
+Navegación por teclado funcional
+Anuncios de pantalla lectora para acciones importantes
+
+---
+
+Testing
+
+Unit Tests (Jasmine/Karma):
+Validación de DNI
+Cálculo de tarifas
+Filtros de transacciones
+Servicios core
+
+E2E Tests (Cypress/Playwright):
+Flujo completo de registro
+Flujo de recarga
+Flujo de pago (multipago)
+Login/Logout
+
+---
+
+Instrucciones de Implementación
+
+Paso 1: Setup del Proyecto
+```bash
+ng new transporte-juliaca --routing --style=scss --standalone
+cd transporte-juliaca
+npm install -D tailwindcss postcss autoprefixer
+npx tailwindcss init
+npm install ol
+npm install --save-dev @types/ol
+npm install @angular/material @angular/cdk
+```
+
+Paso 2: Configurar Tailwind
+`tailwind.config.js` con colores personalizados
+Import en `styles.scss`
+
+Paso 3: Crear Estructura
+Core services
+Shared components
+Feature modules
+Routing
+
+Paso 4: Implementar Componentes Base
+DNI Input
+Balance Card
+QR Code
+Map (OpenLayers)
+
+Paso 5: Implementar Flujo de Auth
+Welcome
+Register (3 pasos)
+Login
+
+Paso 6: Implementar Flujo de Card
+My Card
+Recharge
+Pay Fare
+Movements
+
+Paso 7: Implementar Mapa
+Componente OpenLayers
+Geolocation Service
+Integración con My Card
