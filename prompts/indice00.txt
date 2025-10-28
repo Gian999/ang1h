@@ -1,0 +1,251 @@
+# 📚 ÍNDICE DE MÓDULOS - Migración Angular 20
+
+## 🎯 Transporte Colectivo Inteligente - Juliaca, Perú
+
+Esta es una guía modular para migrar la aplicación de React a Angular 20. Cada módulo es independiente y manejable para que Copilot pueda procesarlo sin problemas.
+
+---
+
+## 📋 ORDEN DE IMPLEMENTACIÓN
+
+### ✅ MÓDULO 00 - INICIO Y CONFIGURACIÓN BASE
+**Archivo**: `00-INICIO.md`  
+**Tiempo estimado**: 30 minutos  
+**Contenido**:
+- Configuración del proyecto Angular 20
+- Instalación de dependencias
+- Tailwind CSS v4.0
+- Modelos TypeScript (UserData, DriverData, BusData, Transaction)
+- Guards (AuthGuard, DriverGuard)
+- Routing principal
+- Datos de demo
+
+**Checklist**: 9 tareas
+
+---
+
+### ✅ MÓDULO 01 - PASAJEROS CORE
+**Archivo**: `01-PASAJEROS-CORE.md`  
+**Tiempo estimado**: 2 horas  
+**Contenido**:
+- WelcomeComponent
+- RegisterComponent (3 pasos)
+- LoginComponent
+- MyCardComponent
+- Routing de pasajeros
+
+**Checklist**: 9 tareas
+
+---
+
+### ⭐⭐ MÓDULO 02 - PASAJEROS PAGO (PRIORIDAD MÁXIMA)
+**Archivo**: `02-PASAJEROS-PAGO.md`  
+**Tiempo estimado**: 2.5 horas  
+**Contenido**:
+- **ScanQRComponent** (escanea QR del microbus) ⭐
+- **PayFareComponent** (pago directo, NO genera QR) ⭐
+- BusService (parseo de QR)
+- Integración ZXing Scanner
+- Flujo completo de pago corregido
+
+**Checklist**: 11 tareas
+
+**⚠️ IMPORTANTE**: Este es el módulo más crítico. El pasajero ESCANEA el QR del bus, NO genera su propio QR.
+
+---
+
+### ✅ MÓDULO 03 - PASAJEROS EXTRAS
+**Archivo**: `03-PASAJEROS-EXTRAS.md`  
+**Tiempo estimado**: 2 horas  
+**Contenido**:
+- RechargeComponent
+- MovementsComponent
+- ProfileComponent
+- **MapViewComponent** (Mapbox 2D, NO OpenLayers) ⭐
+
+**Checklist**: 8 tareas
+
+---
+
+### ⭐ MÓDULO 04 - CONDUCTORES
+**Archivo**: `04-CONDUCTORES.md`  
+**Tiempo estimado**: 3 horas  
+**Contenido**:
+- DriverWelcomeComponent
+- DriverRegisterComponent (4 pasos con datos vehículo)
+- **DriverLoginComponent** (2FA + solicitud GPS) ⭐
+- **DriverMapComponent** (panel colapsable, Mapbox) ⭐
+
+**Checklist**: 7 tareas
+
+**⚠️ IMPORTANTE**: 
+- Solicitar permisos GPS al login
+- Panel de stats colapsable (oculto por defecto)
+
+---
+
+### 🔌 MÓDULO 05 - WEBSOCKET
+**Archivo**: `05-WEBSOCKET.md`  
+**Tiempo estimado**: 1.5 horas  
+**Contenido**:
+- WebSocketService
+- Eventos: PASSENGER_PAYMENT, PASSENGER_BOARDED
+- Modo demo (sin backend)
+- Backend opcional (Node.js + Socket.io)
+
+**Checklist**: 8 tareas
+
+---
+
+### 🔧 MÓDULO 06 - SERVICIOS
+**Archivo**: `06-SERVICIOS.md`  
+**Tiempo estimado**: 1 hora  
+**Contenido**:
+- AuthService
+- DriverService
+- TransactionService
+- GeolocationService
+
+**Checklist**: 8 tareas
+
+---
+
+### 🧩 MÓDULO 07 - COMPONENTES SHARED
+**Archivo**: `07-COMPONENTES-SHARED.md`  
+**Tiempo estimado**: 1.5 horas  
+**Contenido**:
+- DNIInputComponent
+- BalanceCardComponent
+- NumericStepperComponent
+- TransactionListComponent
+- AmountSelectorComponent
+- TicketComponent
+- MapControlsComponent
+- SharedModule
+
+**Checklist**: 9 tareas
+
+---
+
+### ✅ MÓDULO 08 - FINALIZACIÓN
+**Archivo**: `08-FINALIZACION.md`  
+**Tiempo estimado**: 1 hora  
+**Contenido**:
+- Testing completo (3 flujos)
+- Validaciones
+- Optimización
+- Deployment (Vercel/Netlify/Firebase)
+- Variables de entorno
+- Documentación
+
+**Checklist final**: 50+ tareas
+
+---
+
+## 📊 RESUMEN
+
+| Módulo | Archivo | Tiempo | Prioridad |
+|--------|---------|--------|-----------|
+| 00 | 00-INICIO.md | 30 min | Alta |
+| 01 | 01-PASAJEROS-CORE.md | 2h | Alta |
+| **02** | **02-PASAJEROS-PAGO.md** | **2.5h** | **MÁXIMA** ⭐⭐ |
+| 03 | 03-PASAJEROS-EXTRAS.md | 2h | Media |
+| 04 | 04-CONDUCTORES.md | 3h | Alta ⭐ |
+| 05 | 05-WEBSOCKET.md | 1.5h | Alta |
+| 06 | 06-SERVICIOS.md | 1h | Media |
+| 07 | 07-COMPONENTES-SHARED.md | 1.5h | Media |
+| 08 | 08-FINALIZACION.md | 1h | Alta |
+| **TOTAL** | **9 módulos** | **~15h** | |
+
+---
+
+## 🎯 PUNTOS CLAVE (NO OLVIDAR)
+
+### 1. ❌ NO HACER:
+- ❌ Pasajero genera su propio QR
+- ❌ Usar OpenLayers (usar Mapbox para todos)
+- ❌ Panel de conductor auto-ocultar
+- ❌ Clases Tailwind para tipografía (font-size, font-weight, line-height)
+- ❌ Conductor añade pasajeros manualmente
+
+### 2. ✅ SÍ HACER:
+- ✅ Pasajero escanea QR del microbus
+- ✅ Mapbox para todos (2D pasajeros, 3D conductores opcional)
+- ✅ Panel conductor colapsable manual
+- ✅ WebSocket para sincronización
+- ✅ Solicitar GPS al login del conductor
+- ✅ Panel expandido automáticamente cuando llega pasajero
+
+---
+
+## 🚀 CÓMO USAR ESTOS MÓDULOS
+
+### Con Copilot:
+1. Abre el primer módulo: `00-INICIO.md`
+2. Copia **TODO** el contenido
+3. Pégalo en Copilot
+4. Espera a que complete
+5. Verifica el checklist
+6. Continúa con el siguiente módulo
+
+### Orden recomendado:
+```
+00 → 01 → 02 (CRÍTICO) → 06 → 07 → 03 → 04 → 05 → 08
+```
+
+### Si tienes poco tiempo:
+Prioriza: **00 → 01 → 02 → 04 → 05** (core funcional)
+
+---
+
+## 📚 ARCHIVOS DE REFERENCIA
+
+Además de estos módulos, tienes:
+
+- **FLUJO_CORREGIDO.md**: Detalles del flujo de pago actualizado
+- **WEBSOCKET_INTEGRATION.md**: Documentación extensa de WebSocket
+- **CORRECCIONES_FINALES.md**: Resumen de todos los cambios
+- **PROMPT_COPILOT_FINAL.txt**: Prompt conciso (alternativa rápida)
+
+---
+
+## 💡 CONSEJOS
+
+1. **No te saltes el módulo 00**: Es la base de todo
+2. **El módulo 02 es CRÍTICO**: Tómate tu tiempo ahí
+3. **Cada módulo es autocontent**: Puedes pausar entre módulos
+4. **Verifica los checklists**: Te ayudarán a no olvidar nada
+5. **Testing constante**: Prueba después de cada 2-3 módulos
+
+---
+
+## 🆘 SI ALGO FALLA
+
+1. Revisa el checklist del módulo
+2. Consulta `CORRECCIONES_FINALES.md`
+3. Verifica que completaste los módulos previos
+4. Revisa los archivos de referencia
+
+---
+
+## ✅ CHECKLIST GENERAL
+
+- [ ] Módulo 00 completado
+- [ ] Módulo 01 completado
+- [ ] Módulo 02 completado (CRÍTICO)
+- [ ] Módulo 03 completado
+- [ ] Módulo 04 completado
+- [ ] Módulo 05 completado
+- [ ] Módulo 06 completado
+- [ ] Módulo 07 completado
+- [ ] Módulo 08 completado
+- [ ] Testing completo exitoso
+- [ ] Deployment realizado
+
+---
+
+**¡Comienza con el Módulo 00!** 🚀
+
+**Proyecto**: Transporte Colectivo Inteligente - Juliaca, Perú 🇵🇪  
+**Versión**: 1.0 Modular  
+**Fecha**: 28 de octubre, 2025

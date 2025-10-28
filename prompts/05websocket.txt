@@ -1,0 +1,394 @@
+# 🔌 MÓDULO 05 - WEBSOCKET
+
+## 📋 Objetivo
+Implementar WebSocketService para comunicación en tiempo real entre pasajeros y conductores.
+
+**Requisito previo**: `04-CONDUCTORES.md`
+
+---
+
+## 📦 INSTALACIÓN
+
+```bash
+npm install socket.io-client
+npm install -D @types/socket.io-client
+```
+
+---
+
+## 🔧 SERVICIO: WebSocketService
+
+### src/app/core/services/websocket.service.ts
+
+```typescript
+import { Injectable } from '@angular/core';
+import { BehaviorSubject, Observable } from 'rxjs';
+import { io, Socket } from 'socket.io-client';
+
+export enum SocketEvents {
+  // Pasajeros
+  PASSENGER_PAYMENT = 'passenger:payment',
+  PASSENGER_LOCATION = 'passenger:location',
+  
+  // Conductores
+  DRIVER_CONNECT = 'driver:connect',
+  DRIVER_DUTY_STATUS = 'driver:duty_status',
+  DRIVER_LOCATION = 'driver:location',
+  
+  // Broadcast
+  PASSENGER_BOARDED = 'passenger:boarded',
+  BUS_LOCATION_UPDATE = 'bus:location_update'
+}
+
+export interface PassengerBoardedEvent {
+  adultos: number;
+  escolares: number;
+  total: number;
+  timestamp: number;
+  totalPassengers: number;
+  totalCollected: number;
+}
+
+export interface PaymentData {
+  busPlaca: string;
+  adultos: number;
+  escolares: number;
+  total: number;
+  passengerId: string;
+}
+
+export interface DriverConnectData {
+  placa: string;
+  ruta: string;
+  driverName: string;
+}
+
+@Injectable({
+  providedIn: 'root'
+})
+export class WebSocketService {
+  private socket: Socket | null = null;
+  private connected$ = new BehaviorSubject<boolean>(false);
+  private passengerBoarded$ = new BehaviorSubject<PassengerBoardedEvent | null>(null);
+  
+  // Modo demo (sin backend real)
+  private demoMode = true;
+
+  constructor() {}
+
+  /**
+   * Conectar al servidor WebSocket
+   */
+  connect(serverUrl: string = 'http://localhost:3001'): void {
+    if (this.socket?.connected) {
+      console.log('WebSocket ya está conectado');
+      return;
+    }
+
+    if (this.demoMode) {
+      console.log('WebSocket en modo DEMO');
+      this.connected$.next(true);
+      return;
+    }
+
+    this.socket = io(serverUrl, {
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 5
+    });
+
+    this.socket.on('connect', () => {
+      console.log('WebSocket conectado');
+      this.connected$.next(true);
+    });
+
+    this.socket.on('disconnect', () => {
+      console.log('WebSocket desconectado');
+      this.connected$.next(false);
+    });
+
+    this.socket.on(SocketEvents.PASSENGER_BOARDED, (data: PassengerBoardedEvent) => {
+      console.log('Pasajero abordado:', data);
+      this.passengerBoarded$.next(data);
+    });
+  }
+
+  /**
+   * Desconectar
+   */
+  disconnect(): void {
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
+      this.connected$.next(false);
+    }
+  }
+
+  /**
+   * Registrar conductor
+   */
+  driverConnect(data: DriverConnectData): void {
+    if (this.demoMode) {
+      console.log('Driver conectado (demo):', data);
+      return;
+    }
+    this.socket?.emit(SocketEvents.DRIVER_CONNECT, data);
+  }
+
+  /**
+   * Enviar pago de pasajero
+   */
+  sendPayment(data: PaymentData): void {
+    if (this.demoMode) {
+      console.log('Pago enviado (demo):', data);
+      
+      // Simular respuesta del servidor
+      setTimeout(() => {
+        const event: PassengerBoardedEvent = {
+          adultos: data.adultos,
+          escolares: data.escolares,
+          total: data.total,
+          timestamp: Date.now(),
+          totalPassengers: Math.floor(Math.random() * 20) + (data.adultos + data.escolares),
+          totalCollected: Math.random() * 50 + data.total
+        };
+        this.passengerBoarded$.next(event);
+      }, 500);
+      
+      return;
+    }
+    
+    this.socket?.emit(SocketEvents.PASSENGER_PAYMENT, data);
+  }
+
+  /**
+   * Enviar ubicación del conductor
+   */
+  sendDriverLocation(data: {
+    placa: string;
+    lat: number;
+    lng: number;
+    speed: number;
+    heading: number;
+  }): void {
+    if (this.demoMode) return;
+    this.socket?.emit(SocketEvents.DRIVER_LOCATION, data);
+  }
+
+  /**
+   * Observable: Estado de conexión
+   */
+  isConnected(): Observable<boolean> {
+    return this.connected$.asObservable();
+  }
+
+  /**
+   * Observable: Pasajero abordado
+   */
+  onPassengerBoarded(): Observable<PassengerBoardedEvent | null> {
+    return this.passengerBoarded$.asObservable();
+  }
+
+  /**
+   * Observable: Actualización de ubicación de bus
+   */
+  onBusLocationUpdate(): Observable<any> {
+    if (this.demoMode) {
+      return new Observable(observer => {
+        // No hay actualizaciones en demo
+      });
+    }
+
+    return new Observable(observer => {
+      this.socket?.on(SocketEvents.BUS_LOCATION_UPDATE, (data) => {
+        observer.next(data);
+      });
+    });
+  }
+
+  /**
+   * Activar/desactivar modo demo
+   */
+  setDemoMode(enabled: boolean): void {
+    this.demoMode = enabled;
+  }
+}
+```
+
+---
+
+## 🔗 INTEGRACIÓN EN COMPONENTES
+
+### PayFareComponent (ya implementado en módulo 02)
+
+```typescript
+// En onPay()
+this.wsService.sendPayment({
+  busPlaca: this.busData!.placa,
+  adultos: this.adultos,
+  escolares: this.escolares,
+  total: this.total,
+  passengerId: this.authService.getCurrentUser()?.dni || ''
+});
+```
+
+### DriverMapComponent (ya implementado en módulo 04)
+
+```typescript
+// En ngOnInit()
+this.wsService.connect();
+this.wsService.driverConnect({
+  placa: this.driverData.placa,
+  ruta: this.driverData.numeroRuta,
+  driverName: `${this.driverData.nombres} ${this.driverData.apellidos}`
+});
+
+this.wsService.onPassengerBoarded().subscribe(event => {
+  if (event) {
+    this.passengerCount = event.totalPassengers;
+    this.totalCollected = event.totalCollected;
+    
+    if (!this.showStatsPanel && this.isOnDuty) {
+      this.showStatsPanel = true;
+    }
+  }
+});
+```
+
+---
+
+## 🖥️ BACKEND (OPCIONAL - Node.js + Socket.io)
+
+### Instalación backend
+```bash
+mkdir backend
+cd backend
+npm init -y
+npm install express socket.io cors
+npm install -D typescript @types/node @types/express
+```
+
+### server.ts (ejemplo mínimo)
+
+```typescript
+import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+
+const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST']
+  }
+});
+
+const activeBuses = new Map();
+
+io.on('connection', (socket) => {
+  console.log(`Cliente conectado: ${socket.id}`);
+
+  socket.on('driver:connect', (data) => {
+    activeBuses.set(data.placa, {
+      socketId: socket.id,
+      ...data,
+      passengerCount: 0,
+      totalCollected: 0
+    });
+    socket.join(`bus:${data.placa}`);
+    console.log(`Conductor conectado: ${data.placa}`);
+  });
+
+  socket.on('passenger:payment', (data) => {
+    console.log(`Pago recibido para bus ${data.busPlaca}:`, data);
+    
+    const bus = activeBuses.get(data.busPlaca);
+    if (bus) {
+      bus.passengerCount += data.adultos + data.escolares;
+      bus.totalCollected += data.total;
+      
+      io.to(`bus:${data.busPlaca}`).emit('passenger:boarded', {
+        adultos: data.adultos,
+        escolares: data.escolares,
+        total: data.total,
+        timestamp: Date.now(),
+        totalPassengers: bus.passengerCount,
+        totalCollected: bus.totalCollected
+      });
+    }
+  });
+
+  socket.on('disconnect', () => {
+    for (const [placa, bus] of activeBuses.entries()) {
+      if (bus.socketId === socket.id) {
+        activeBuses.delete(placa);
+        console.log(`Conductor desconectado: ${placa}`);
+        break;
+      }
+    }
+  });
+});
+
+const PORT = 3001;
+httpServer.listen(PORT, () => {
+  console.log(`WebSocket server running on port ${PORT}`);
+});
+```
+
+### Ejecutar backend
+```bash
+npx ts-node server.ts
+```
+
+---
+
+## 🧪 TESTING
+
+### Test 1: Modo Demo (sin backend)
+1. Abrir app Angular
+2. Login como conductor
+3. Activar "En servicio"
+4. En otra pestaña, login como pasajero
+5. Escanear QR (simular)
+6. Pagar pasaje
+7. Verificar que el conductor vea la actualización automáticamente
+
+### Test 2: Con Backend
+1. Iniciar backend: `npx ts-node server.ts`
+2. En `websocket.service.ts`, cambiar `demoMode = false`
+3. Repetir Test 1
+4. Verificar logs en backend
+
+---
+
+## 📊 EVENTOS Y FLUJO
+
+```
+PASAJERO                    BACKEND                    CONDUCTOR
+   |                           |                           |
+   |--[passenger:payment]----->|                           |
+   |                           |                           |
+   |                           |--[passenger:boarded]----->|
+   |                           |                           |
+   |                           |      (stats actualizadas) |
+   |                           |      (panel se expande)   |
+```
+
+---
+
+## ✅ CHECKLIST
+
+- [ ] WebSocketService creado
+- [ ] Modo demo funcionando
+- [ ] Integración en PayFare
+- [ ] Integración en DriverMap
+- [ ] Eventos PASSENGER_PAYMENT enviándose
+- [ ] Eventos PASSENGER_BOARDED recibiéndose
+- [ ] Panel del conductor expandiéndose automáticamente
+- [ ] Backend opcional configurado (si se usa)
+
+---
+
+## ⏭️ SIGUIENTE: `06-SERVICIOS.md`

@@ -1,0 +1,403 @@
+# 🔧 MÓDULO 06 - SERVICIOS
+
+## 📋 Objetivo
+Implementar todos los servicios faltantes: AuthService, DriverService, TransactionService, GeolocationService.
+
+**Requisito previo**: `05-WEBSOCKET.md`
+
+---
+
+## 👤 AuthService
+
+```typescript
+// src/app/core/services/auth.service.ts
+import { Injectable } from '@angular/core';
+import { BehaviorSubject, Observable } from 'rxjs';
+import { UserData } from '../models/user.model';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class AuthService {
+  private currentUserSubject = new BehaviorSubject<UserData | null>(null);
+  public currentUser$ = this.currentUserSubject.asObservable();
+
+  constructor() {
+    // Cargar usuario desde localStorage
+    const savedUser = localStorage.getItem('currentUser');
+    if (savedUser) {
+      this.currentUserSubject.next(JSON.parse(savedUser));
+    }
+  }
+
+  async register(userData: UserData): Promise<boolean> {
+    try {
+      // En producción, llamar a API
+      localStorage.setItem('currentUser', JSON.stringify(userData));
+      this.currentUserSubject.next(userData);
+      return true;
+    } catch (error) {
+      console.error('Error en registro:', error);
+      return false;
+    }
+  }
+
+  async login(identifier: string, password: string): Promise<boolean> {
+    // Demo credentials
+    if (identifier === '12345678' && password === 'demo123') {
+      const demoUser: UserData = {
+        dni: '12345678',
+        nombres: 'Juan Carlos',
+        apellidos: 'Pérez Mamani',
+        fechaNacimiento: '1990-01-01',
+        email: 'juan.perez@ejemplo.com',
+        celular: '987654321',
+        distrito: 'Juliaca',
+        password: 'demo123'
+      };
+      
+      localStorage.setItem('currentUser', JSON.stringify(demoUser));
+      this.currentUserSubject.next(demoUser);
+      return true;
+    }
+    
+    return false;
+  }
+
+  logout(): void {
+    localStorage.removeItem('currentUser');
+    this.currentUserSubject.next(null);
+  }
+
+  isAuthenticated(): boolean {
+    return this.currentUserSubject.value !== null;
+  }
+
+  getCurrentUser(): UserData | null {
+    return this.currentUserSubject.value;
+  }
+}
+```
+
+---
+
+## 🚌 DriverService
+
+```typescript
+// src/app/core/services/driver.service.ts
+import { Injectable } from '@angular/core';
+import { BehaviorSubject, Observable } from 'rxjs';
+import { DriverData } from '../models/driver.model';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class DriverService {
+  private currentDriverSubject = new BehaviorSubject<DriverData | null>(null);
+  public currentDriver$ = this.currentDriverSubject.asObservable();
+
+  constructor() {
+    const savedDriver = localStorage.getItem('currentDriver');
+    if (savedDriver) {
+      this.currentDriverSubject.next(JSON.parse(savedDriver));
+    }
+  }
+
+  async register(driverData: DriverData): Promise<boolean> {
+    try {
+      localStorage.setItem('currentDriver', JSON.stringify(driverData));
+      this.currentDriverSubject.next(driverData);
+      return true;
+    } catch (error) {
+      console.error('Error en registro conductor:', error);
+      return false;
+    }
+  }
+
+  login(identifier: string, password: string, code: string): boolean {
+    // Demo credentials
+    if (identifier === '87654321' && password === 'conductor123' && code === '123456') {
+      const demoDriver: DriverData = {
+        dni: '87654321',
+        nombres: 'Pedro Luis',
+        apellidos: 'Condori Quispe',
+        licencia: 'Q87654321',
+        placa: 'ABC123',
+        modelo: 'Toyota Hiace',
+        año: '2020',
+        color: 'Blanco',
+        capacidad: '15',
+        numeroRuta: 'Ruta 5',
+        empresaTransporte: 'Transportes Juliaca S.A.',
+        email: 'pedro.conductor@ejemplo.com',
+        celular: '987654322',
+        password: 'conductor123'
+      };
+      
+      localStorage.setItem('currentDriver', JSON.stringify(demoDriver));
+      this.currentDriverSubject.next(demoDriver);
+      return true;
+    }
+    
+    return false;
+  }
+
+  logout(): void {
+    localStorage.removeItem('currentDriver');
+    this.currentDriverSubject.next(null);
+  }
+
+  isAuthenticated(): boolean {
+    return this.currentDriverSubject.value !== null;
+  }
+
+  getCurrentDriver(): DriverData | null {
+    return this.currentDriverSubject.value;
+  }
+}
+```
+
+---
+
+## 💳 TransactionService
+
+```typescript
+// src/app/core/services/transaction.service.ts
+import { Injectable } from '@angular/core';
+import { BehaviorSubject, Observable } from 'rxjs';
+import { Transaction } from '../models/transaction.model';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class TransactionService {
+  private transactionsSubject = new BehaviorSubject<Transaction[]>([]);
+  public transactions$ = this.transactionsSubject.asObservable();
+
+  constructor() {
+    const saved = localStorage.getItem('transactions');
+    if (saved) {
+      this.transactionsSubject.next(JSON.parse(saved));
+    } else {
+      // Datos demo
+      this.initDemoTransactions();
+    }
+  }
+
+  private initDemoTransactions(): void {
+    const demo: Transaction[] = [
+      {
+        id: '1',
+        type: 'recarga',
+        amount: 20.00,
+        date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+        method: 'tarjeta',
+        description: 'Recarga en línea'
+      },
+      {
+        id: '2',
+        type: 'pasaje',
+        amount: 1.00,
+        date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
+        route: 'Ruta 5',
+        busPlaca: 'ABC123',
+        adultos: 1,
+        escolares: 0,
+        description: 'Pago de pasaje adulto'
+      }
+    ];
+    this.transactionsSubject.next(demo);
+    this.saveTransactions();
+  }
+
+  addTransaction(transaction: Transaction): void {
+    const current = this.transactionsSubject.value;
+    this.transactionsSubject.next([transaction, ...current]);
+    this.saveTransactions();
+  }
+
+  addRecharge(amount: number, method: 'yape' | 'plin' | 'tarjeta' | 'agente'): void {
+    const transaction: Transaction = {
+      id: `RCG${Date.now()}`,
+      type: 'recarga',
+      amount: amount,
+      date: new Date(),
+      method: method,
+      description: `Recarga con ${method}`
+    };
+    this.addTransaction(transaction);
+  }
+
+  addPayment(data: {
+    adultos: number;
+    escolares: number;
+    total: number;
+    route: string;
+    busPlaca: string;
+  }): void {
+    const transaction: Transaction = {
+      id: `PAY${Date.now()}`,
+      type: 'pasaje',
+      amount: data.total,
+      date: new Date(),
+      route: data.route,
+      busPlaca: data.busPlaca,
+      adultos: data.adultos,
+      escolares: data.escolares,
+      description: `Pago de pasaje - ${data.route}`
+    };
+    this.addTransaction(transaction);
+  }
+
+  getTransactions(): Transaction[] {
+    return this.transactionsSubject.value;
+  }
+
+  getTransactionsByType(type: Transaction['type']): Transaction[] {
+    return this.transactionsSubject.value.filter(t => t.type === type);
+  }
+
+  calculateBalance(): number {
+    const transactions = this.transactionsSubject.value;
+    let balance = 0;
+    
+    transactions.forEach(t => {
+      if (t.type === 'recarga') {
+        balance += t.amount;
+      } else if (t.type === 'pasaje') {
+        balance -= t.amount;
+      }
+    });
+    
+    return Math.max(balance, 0);
+  }
+
+  private saveTransactions(): void {
+    localStorage.setItem('transactions', JSON.stringify(this.transactionsSubject.value));
+  }
+}
+```
+
+---
+
+## 📍 GeolocationService
+
+```typescript
+// src/app/core/services/geolocation.service.ts
+import { Injectable } from '@angular/core';
+import { BehaviorSubject, Observable } from 'rxjs';
+
+export interface Position {
+  lat: number;
+  lng: number;
+  accuracy: number;
+  heading: number | null;
+  speed: number | null;
+  timestamp: number;
+}
+
+@Injectable({
+  providedIn: 'root'
+})
+export class GeolocationService {
+  private positionSubject = new BehaviorSubject<Position | null>(null);
+  public position$ = this.positionSubject.asObservable();
+  
+  private watchId: number | null = null;
+
+  constructor() {}
+
+  async getCurrentPosition(): Promise<Position> {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error('Geolocation not supported'));
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const pos: Position = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            heading: position.coords.heading,
+            speed: position.coords.speed,
+            timestamp: position.timestamp
+          };
+          this.positionSubject.next(pos);
+          resolve(pos);
+        },
+        (error) => reject(error),
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
+        }
+      );
+    });
+  }
+
+  watchPosition(): Observable<Position> {
+    if (this.watchId !== null) {
+      return this.position$;
+    }
+
+    this.watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const pos: Position = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          heading: position.coords.heading,
+          speed: position.coords.speed,
+          timestamp: position.timestamp
+        };
+        this.positionSubject.next(pos);
+      },
+      (error) => console.error('Error watching position:', error),
+      {
+        enableHighAccuracy: true,
+        maximumAge: 5000,
+        timeout: 10000
+      }
+    );
+
+    return this.position$;
+  }
+
+  stopWatching(): void {
+    if (this.watchId !== null) {
+      navigator.geolocation.clearWatch(this.watchId);
+      this.watchId = null;
+    }
+  }
+
+  async checkPermissions(): Promise<PermissionState> {
+    try {
+      const result = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+      return result.state;
+    } catch (error) {
+      console.error('Error checking permissions:', error);
+      return 'prompt';
+    }
+  }
+}
+```
+
+---
+
+## ✅ CHECKLIST
+
+- [ ] AuthService creado y funcionando
+- [ ] DriverService creado y funcionando
+- [ ] TransactionService creado y funcionando
+- [ ] GeolocationService creado y funcionando
+- [ ] BusService creado (módulo 02)
+- [ ] WebSocketService creado (módulo 05)
+- [ ] Todos los servicios registrados en `providedIn: 'root'`
+- [ ] LocalStorage persistiendo datos
+- [ ] Datos demo cargándose correctamente
+
+---
+
+## ⏭️ SIGUIENTE: `07-COMPONENTES-SHARED.md`

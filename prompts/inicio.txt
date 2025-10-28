@@ -1,0 +1,387 @@
+# 🚀 MÓDULO 00 - INICIO Y CONFIGURACIÓN BASE
+
+## 📋 Objetivo de este módulo
+Configurar el proyecto Angular 20 con la estructura base, estilos y configuración inicial.
+
+---
+
+## 🎨 ESPECIFICACIONES DE DISEÑO
+
+### Paleta de colores:
+```css
+--color-blue-primary: #2563EB;    /* Pasajeros */
+--color-green-secondary: #059669;  /* Acciones positivas */
+--color-amber: #F59E0B;            /* Conductores */
+--color-background: #F8FAFC;
+--color-text: #1F2937;
+--color-text-secondary: #6B7280;
+```
+
+### Reglas de tipografía:
+⚠️ **IMPORTANTE**: NO usar clases de Tailwind para:
+- `font-size` (text-xl, text-2xl, etc.)
+- `font-weight` (font-bold, font-semibold, etc.)
+- `line-height` (leading-tight, etc.)
+
+Usar tipografía definida en `globals.css`
+
+### Accesibilidad:
+- Elementos táctiles: mínimo 44px × 44px
+- Contraste: WCAG AA
+- Textos: mínimo 14px
+
+### Tono comunicacional:
+- Español peruano formal pero cercano
+- Tono cívico/municipal
+- Términos: "saldo", "pasaje", "microbus", "DNI", "celular"
+
+---
+
+## 🏗️ ESTRUCTURA DE CARPETAS
+
+```
+src/app/
+├── core/
+│   ├── services/
+│   ├── guards/
+│   ├── interceptors/
+│   └── models/
+├── shared/
+│   ├── components/
+│   ├── directives/
+│   └── pipes/
+├── features/
+│   ├── passenger/
+│   └── driver/
+├── app-routing.module.ts
+├── app.component.ts
+└── app.module.ts
+```
+
+---
+
+## 📦 INSTALACIÓN DE DEPENDENCIAS
+
+```bash
+# Angular 20
+ng new transporte-juliaca --routing --style=css
+cd transporte-juliaca
+
+# Tailwind CSS v4.0
+npm install -D tailwindcss@next @tailwindcss/cli@next
+npm install -D postcss autoprefixer
+
+# Mapbox
+npm install mapbox-gl
+npm install -D @types/mapbox-gl
+
+# WebSocket
+npm install socket.io-client
+npm install -D @types/socket.io-client
+
+# QR Scanner
+npm install @zxing/library @zxing/ngx-scanner
+
+# QR Generator
+npm install angularx-qrcode
+
+# Utilidades
+npm install date-fns
+```
+
+---
+
+## 🎨 CONFIGURACIÓN DE TAILWIND V4.0
+
+### tailwind.config.js
+```javascript
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: [
+    "./src/**/*.{html,ts}",
+  ],
+  theme: {
+    extend: {
+      colors: {
+        'blue-primary': '#2563EB',
+        'green-secondary': '#059669',
+        'amber-custom': '#F59E0B',
+      },
+    },
+  },
+  plugins: [],
+}
+```
+
+### src/styles/globals.css
+```css
+@import 'tailwindcss';
+
+/* Tipografía base - NO sobrescribir con clases Tailwind */
+body {
+  font-family: 'Inter', 'Roboto', system-ui, -apple-system, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #1F2937;
+}
+
+h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+/* Animaciones personalizadas */
+@keyframes pulse-slow {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.05);
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 3s ease-in-out infinite;
+}
+
+/* Mapbox styles */
+@import 'mapbox-gl/dist/mapbox-gl.css';
+```
+
+---
+
+## 🗂️ MODELOS DE DATOS
+
+### src/app/core/models/user.model.ts
+```typescript
+export interface UserData {
+  dni: string;
+  nombres: string;
+  apellidos: string;
+  fechaNacimiento: string;
+  email: string;
+  celular: string;
+  distrito: string;
+  password: string;
+}
+```
+
+### src/app/core/models/driver.model.ts
+```typescript
+export interface DriverData {
+  dni: string;
+  nombres: string;
+  apellidos: string;
+  licencia: string;
+  placa: string;
+  modelo: string;
+  año: string;
+  color: string;
+  capacidad: string;
+  numeroRuta: string;
+  empresaTransporte: string;
+  email: string;
+  celular: string;
+  password: string;
+}
+```
+
+### src/app/core/models/bus-data.model.ts ⭐ IMPORTANTE
+```typescript
+export interface BusData {
+  placa: string;      // "ABC123"
+  ruta: string;       // "Ruta 5"
+  validador: string;  // "VALID001"
+}
+```
+
+### src/app/core/models/transaction.model.ts
+```typescript
+export interface Transaction {
+  id: string;
+  type: 'recarga' | 'pasaje' | 'vinculacion';
+  amount: number;
+  date: Date;
+  description: string;
+  route?: string;
+  busPlaca?: string;    // ⭐ Para identificar el microbus
+  method?: 'yape' | 'plin' | 'tarjeta' | 'agente';
+  adultos?: number;     // ⭐ Para pasajes
+  escolares?: number;   // ⭐ Para pasajes
+}
+```
+
+---
+
+## 🔒 GUARDS
+
+### src/app/core/guards/auth.guard.ts
+```typescript
+import { Injectable } from '@angular/core';
+import { CanActivate, Router } from '@angular/router';
+import { AuthService } from '../services/auth.service';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class AuthGuard implements CanActivate {
+  constructor(
+    private authService: AuthService,
+    private router: Router
+  ) {}
+
+  canActivate(): boolean {
+    if (this.authService.isAuthenticated()) {
+      return true;
+    }
+    this.router.navigate(['/login']);
+    return false;
+  }
+}
+```
+
+### src/app/core/guards/driver.guard.ts
+```typescript
+import { Injectable } from '@angular/core';
+import { CanActivate, Router } from '@angular/router';
+import { DriverService } from '../services/driver.service';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class DriverGuard implements CanActivate {
+  constructor(
+    private driverService: DriverService,
+    private router: Router
+  ) {}
+
+  canActivate(): boolean {
+    if (this.driverService.isAuthenticated()) {
+      return true;
+    }
+    this.router.navigate(['/driver/login']);
+    return false;
+  }
+}
+```
+
+---
+
+## 🛣️ ROUTING PRINCIPAL
+
+### src/app/app-routing.module.ts
+```typescript
+import { NgModule } from '@angular/core';
+import { RouterModule, Routes } from '@angular/router';
+
+const routes: Routes = [
+  { path: '', redirectTo: '/welcome', pathMatch: 'full' },
+  {
+    path: '',
+    loadChildren: () => import('./features/passenger/passenger.module')
+      .then(m => m.PassengerModule)
+  },
+  {
+    path: 'driver',
+    loadChildren: () => import('./features/driver/driver.module')
+      .then(m => m.DriverModule)
+  },
+  { path: '**', redirectTo: '/welcome' }
+];
+
+@NgModule({
+  imports: [RouterModule.forRoot(routes)],
+  exports: [RouterModule]
+})
+export class AppRoutingModule { }
+```
+
+---
+
+## 📱 APP COMPONENT
+
+### src/app/app.component.ts
+```typescript
+import { Component } from '@angular/core';
+
+@Component({
+  selector: 'app-root',
+  template: '<router-outlet></router-outlet>',
+  styles: []
+})
+export class AppComponent {
+  title = 'Transporte Colectivo Inteligente - Juliaca';
+}
+```
+
+---
+
+## 📋 DATOS DE DEMO
+
+### Pasajero
+```typescript
+export const DEMO_PASSENGER = {
+  dni: '12345678',
+  password: 'demo123',
+  balance: 15.50
+};
+```
+
+### Conductor
+```typescript
+export const DEMO_DRIVER = {
+  dni: '87654321',
+  password: 'conductor123',
+  code: '123456',
+  placa: 'ABC123',
+  numeroRuta: 'Ruta 5'
+};
+```
+
+### QR del Microbus
+```typescript
+export const DEMO_BUS_QR = 'BUS:ABC123:Ruta 5:VALID001';
+```
+
+---
+
+## ✅ CHECKLIST DE ESTE MÓDULO
+
+- [ ] Proyecto Angular 20 creado
+- [ ] Todas las dependencias instaladas
+- [ ] Tailwind CSS v4.0 configurado
+- [ ] `globals.css` con estilos base
+- [ ] Estructura de carpetas creada
+- [ ] Modelos TypeScript creados (UserData, DriverData, BusData, Transaction)
+- [ ] Guards creados (AuthGuard, DriverGuard)
+- [ ] Routing principal configurado
+- [ ] AppComponent básico funcionando
+- [ ] Datos de demo definidos
+
+---
+
+## ⏭️ SIGUIENTE PASO
+
+Una vez completado este módulo, continúa con:
+**`01-PASAJEROS-CORE.md`** - Componentes principales de pasajeros
+
+---
+
+**Módulo**: 00 - Inicio y Configuración Base  
+**Proyecto**: Transporte Colectivo Inteligente - Juliaca, Perú 🇵🇪  
+**Fecha**: 28 de octubre, 2025

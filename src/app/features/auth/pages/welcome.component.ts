@@ -76,6 +76,22 @@ import { RouterLink } from '@angular/router';
           </a>
         </div>
 
+        <!-- Link to driver portal -->
+        <div class="mt-6">
+          <a 
+            routerLink="/driver"
+            class="flex items-center justify-center gap-2 text-white/90 hover:text-white transition-colors group"
+          >
+            <svg class="w-5 h-5 text-emphasis" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+            </svg>
+            <span class="font-medium">Acceso para conductores</span>
+            <svg class="w-4 h-4 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+
         <!-- Footer -->
         <p class="text-center text-white/70 text-sm mt-8">
           Versión 1.0 - Juliaca, Perú

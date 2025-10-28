@@ -1,15 +1,25 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, signal, inject } from '@angular/core';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, of, throwError } from 'rxjs';
-import { delay, tap } from 'rxjs/operators';
+import { delay, tap, catchError, map } from 'rxjs/operators';
 import { User, RegisterDto, LoginDto } from '../models/user.model';
 import { Card } from '../models/card.model';
+import { environment } from '../../../environments/environment';
+
+interface AuthResponse {
+  user: User;
+  token: string;
+  card?: Card;
+}
 
 @Injectable({
   providedIn: 'root'
 })
 export class AuthService {
+  private http = inject(HttpClient);
   private currentUser = signal<User | null>(null);
   private readonly STORAGE_KEY = 'tci_current_user';
+  private readonly TOKEN_KEY = 'tci_token';
 
   constructor() {
     this.loadUserFromStorage();
@@ -28,95 +38,63 @@ export class AuthService {
   }
 
   register(userData: RegisterDto): Observable<User> {
-    // Simulación de registro
-    const newUser: User = {
-      id: this.generateId(),
-      dni: userData.dni,
-      nombres: userData.nombres,
-      apellidos: userData.apellidos,
-      fechaNacimiento: userData.fechaNacimiento,
-      email: userData.email,
-      celular: userData.celular,
-      distrito: userData.distrito,
-      createdAt: new Date()
-    };
-
-    return of(newUser).pipe(
-      delay(1000),
-      tap(user => {
-        this.currentUser.set(user);
-        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(user));
-        
-        // Crear tarjeta virtual automáticamente
-        const card: Card = {
-          id: this.generateId(),
-          userId: user.id,
-          numero: this.generateCardNumber(),
-          tipo: 'virtual',
-          qrCode: this.generateQRCode(user.id),
-          balance: 15.50, // Saldo inicial demo
-          activa: true,
-          createdAt: new Date()
-        };
-        localStorage.setItem('tci_card', JSON.stringify(card));
-      })
-    );
+    return this.http.post<AuthResponse>(`${environment.apiUrl}/auth/register`, userData)
+      .pipe(
+        tap(response => {
+          this.currentUser.set(response.user);
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(response.user));
+          localStorage.setItem(this.TOKEN_KEY, response.token);
+          
+          // Guardar tarjeta si viene en la respuesta
+          if (response.card) {
+            localStorage.setItem('tci_card', JSON.stringify(response.card));
+          }
+        }),
+        map(response => response.user),
+        catchError((error: HttpErrorResponse) => {
+          console.error('Error en registro:', error);
+          return throwError(() => new Error(error.error?.message || 'Error al registrar usuario'));
+        })
+      );
   }
 
   login(credentials: LoginDto): Observable<User> {
-    // Simulación de login - Demo credentials: DNI: 12345678, Password: demo123
-    if ((credentials.identifier === '12345678' || credentials.identifier === 'demo@example.com') 
-        && credentials.password === 'demo123') {
-      const demoUser: User = {
-        id: 'demo-user-id',
-        dni: '12345678',
-        nombres: 'Juan Carlos',
-        apellidos: 'Mamani Quispe',
-        fechaNacimiento: new Date('1990-01-15'),
-        email: 'demo@example.com',
-        celular: '987654321',
-        distrito: 'Juliaca',
-        createdAt: new Date()
-      };
-
-      return of(demoUser).pipe(
-        delay(800),
-        tap(user => {
-          this.currentUser.set(user);
-          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(user));
+    return this.http.post<AuthResponse>(`${environment.apiUrl}/auth/login`, credentials)
+      .pipe(
+        tap(response => {
+          this.currentUser.set(response.user);
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(response.user));
+          localStorage.setItem(this.TOKEN_KEY, response.token);
           
-          // Asegurar que existe una tarjeta demo
-          if (!localStorage.getItem('tci_card')) {
-            const card: Card = {
-              id: 'demo-card-id',
-              userId: user.id,
-              numero: '5678',
-              tipo: 'virtual',
-              qrCode: this.generateQRCode(user.id),
-              balance: 15.50,
-              activa: true,
-              createdAt: new Date()
-            };
-            localStorage.setItem('tci_card', JSON.stringify(card));
+          // Guardar tarjeta si viene en la respuesta
+          if (response.card) {
+            localStorage.setItem('tci_card', JSON.stringify(response.card));
           }
+        }),
+        map(response => response.user),
+        catchError((error: HttpErrorResponse) => {
+          console.error('Error en login:', error);
+          return throwError(() => new Error(error.error?.message || 'Credenciales inválidas'));
         })
       );
-    }
-
-    return throwError(() => new Error('Credenciales inválidas'));
   }
 
   logout(): void {
     this.currentUser.set(null);
     localStorage.removeItem(this.STORAGE_KEY);
+    localStorage.removeItem(this.TOKEN_KEY);
   }
 
   isAuthenticated(): boolean {
-    return this.currentUser() !== null;
+    return this.currentUser() !== null && !!localStorage.getItem(this.TOKEN_KEY);
   }
 
   getCurrentUser() {
     return this.currentUser;
+  }
+
+  getToken(): string | null {
+    return localStorage.getItem(this.TOKEN_KEY);
   }
 
   private generateId(): string {
@@ -131,3 +109,4 @@ export class AuthService {
     return `TCI-${userId}-${Date.now()}`;
   }
 }
+

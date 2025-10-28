@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
+import { driverGuard } from './core/guards/driver.guard';
 
 export const routes: Routes = [
   {
@@ -27,6 +28,10 @@ export const routes: Routes = [
         loadComponent: () => import('./features/card/pages/recharge.component').then(m => m.RechargeComponent)
       },
       {
+        path: 'scan-qr',
+        loadComponent: () => import('./features/card/pages/scan-qr.component').then(m => m.ScanQRComponent)
+      },
+      {
         path: 'pay-fare',
         loadComponent: () => import('./features/card/pages/pay-fare.component').then(m => m.PayFareComponent)
       },
@@ -51,9 +56,31 @@ export const routes: Routes = [
     canActivate: [authGuard],
     loadComponent: () => import('./features/profile/pages/profile.component').then(m => m.ProfileComponent)
   },
+  // Driver routes
+  {
+    path: 'driver',
+    children: [
+      {
+        path: '',
+        loadComponent: () => import('./features/driver/pages/driver-welcome.component').then(m => m.DriverWelcomeComponent)
+      },
+      {
+        path: 'register',
+        loadComponent: () => import('./features/driver/pages/driver-register/driver-register.component').then(m => m.DriverRegisterComponent)
+      },
+      {
+        path: 'login',
+        loadComponent: () => import('./features/driver/pages/driver-login/driver-login.component').then(m => m.DriverLoginComponent)
+      },
+      {
+        path: 'map',
+        canActivate: [driverGuard],
+        loadComponent: () => import('./features/driver/pages/driver-map/driver-map.component').then(m => m.DriverMapComponent)
+      }
+    ]
+  },
   {
     path: '**',
     redirectTo: ''
   }
 ];
-

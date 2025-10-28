@@ -1,0 +1,525 @@
+# 🚌 MÓDULO 04 - CONDUCTORES
+
+## 📋 Objetivo
+Implementar módulo completo de conductores: Welcome, Register (4 pasos), Login (2FA + GPS), Map (panel colapsable).
+
+**Requisito previo**: `03-PASAJEROS-EXTRAS.md`
+
+---
+
+## 🗺️ ROUTING
+
+```typescript
+// driver-routing.module.ts
+const routes: Routes = [
+  { path: '', component: DriverWelcomeComponent },
+  { path: 'register', component: DriverRegisterComponent },
+  { path: 'login', component: DriverLoginComponent },
+  { path: 'map', component: DriverMapComponent, canActivate: [DriverGuard] }
+];
+```
+
+---
+
+## 🚌 COMPONENTE 1: DRIVER-WELCOME
+
+Similar a Welcome de pasajeros pero con color ámbar (#F59E0B).
+
+```typescript
+@Component({
+  selector: 'app-driver-welcome',
+  templateUrl: './driver-welcome.component.html'
+})
+export class DriverWelcomeComponent {
+  constructor(private router: Router) {}
+
+  onLogin() { this.router.navigate(['/driver/login']); }
+  onRegister() { this.router.navigate(['/driver/register']); }
+  onBackToPassenger() { this.router.navigate(['/welcome']); }
+}
+```
+
+---
+
+## 📝 COMPONENTE 2: DRIVER-REGISTER (4 PASOS)
+
+### driver-register.component.ts
+```typescript
+@Component({
+  selector: 'app-driver-register',
+  templateUrl: './driver-register.component.html'
+})
+export class DriverRegisterComponent {
+  currentStep = 1;
+  totalSteps = 4;
+  
+  step1Form: FormGroup; // DNI, nombres, apellidos, licencia, fechaNacimiento
+  step2Form: FormGroup; // Email, celular
+  step3Form: FormGroup; // ⭐ Datos del vehículo
+  step4Form: FormGroup; // Password, confirmPassword, acceptTerms
+
+  constructor(private fb: FormBuilder, private router: Router, private driverService: DriverService) {
+    this.step1Form = this.fb.group({
+      dni: ['', [Validators.required, Validators.pattern(/^\d{8}$/)]],
+      nombres: ['', Validators.required],
+      apellidos: ['', Validators.required],
+      licencia: ['', [Validators.required, Validators.pattern(/^Q\d{8}$/)]],
+      fechaNacimiento: ['', Validators.required]
+    });
+
+    this.step2Form = this.fb.group({
+      email: ['', [Validators.required, Validators.email]],
+      celular: ['', [Validators.required, Validators.pattern(/^9\d{8}$/)]]
+    });
+
+    // ⭐ Paso 3: Datos del vehículo
+    this.step3Form = this.fb.group({
+      placa: ['', [Validators.required, Validators.pattern(/^[A-Z0-9]{6,7}$/)]],
+      modelo: ['', Validators.required],
+      año: ['', [Validators.required, Validators.min(1990), Validators.max(2025)]],
+      color: ['', Validators.required],
+      capacidad: ['', [Validators.required, Validators.min(5), Validators.max(50)]],
+      numeroRuta: ['', Validators.required],
+      empresaTransporte: ['', Validators.required]
+    });
+
+    this.step4Form = this.fb.group({
+      password: ['', [Validators.required, Validators.minLength(6)]],
+      confirmPassword: ['', Validators.required],
+      acceptTerms: [false, Validators.requiredTrue]
+    });
+  }
+
+  async onSubmit() {
+    const driverData = {
+      ...this.step1Form.value,
+      ...this.step2Form.value,
+      ...this.step3Form.value,
+      password: this.step4Form.value.password
+    };
+
+    const success = await this.driverService.register(driverData);
+    if (success) {
+      this.router.navigate(['/driver/map']);
+    }
+  }
+}
+```
+
+### Paso 3 HTML (datos del vehículo):
+```html
+<div *ngIf="currentStep === 3" class="space-y-4">
+  <h2 class="text-2xl mb-4">Datos del vehículo</h2>
+  <form [formGroup]="step3Form">
+    <div class="space-y-4">
+      <div>
+        <label>Placa</label>
+        <input 
+          formControlName="placa" 
+          maxlength="7"
+          class="w-full p-3 border rounded-lg uppercase"
+          placeholder="ABC123">
+      </div>
+      <div>
+        <label>Modelo</label>
+        <input formControlName="modelo" class="w-full p-3 border rounded-lg" placeholder="Toyota Hiace">
+      </div>
+      <div>
+        <label>Año</label>
+        <input type="number" formControlName="año" class="w-full p-3 border rounded-lg" placeholder="2020">
+      </div>
+      <div>
+        <label>Color</label>
+        <input formControlName="color" class="w-full p-3 border rounded-lg">
+      </div>
+      <div>
+        <label>Capacidad (pasajeros)</label>
+        <input type="number" formControlName="capacidad" class="w-full p-3 border rounded-lg">
+      </div>
+      <div>
+        <label>Número de ruta</label>
+        <input formControlName="numeroRuta" class="w-full p-3 border rounded-lg" placeholder="Ruta 5">
+      </div>
+      <div>
+        <label>Empresa de transporte</label>
+        <input formControlName="empresaTransporte" class="w-full p-3 border rounded-lg" placeholder="Transportes Juliaca S.A.">
+      </div>
+    </div>
+  </form>
+</div>
+```
+
+---
+
+## 🔐 COMPONENTE 3: DRIVER-LOGIN (2FA + GPS) ⭐
+
+### driver-login.component.ts
+```typescript
+@Component({
+  selector: 'app-driver-login',
+  templateUrl: './driver-login.component.html'
+})
+export class DriverLoginComponent {
+  step = 1; // 1: credentials, 2: code verification
+  credentialsForm: FormGroup;
+  codeForm: FormGroup;
+
+  constructor(
+    private fb: FormBuilder,
+    private driverService: DriverService,
+    private router: Router
+  ) {
+    this.credentialsForm = this.fb.group({
+      identifier: ['', Validators.required],
+      password: ['', Validators.required]
+    });
+
+    this.codeForm = this.fb.group({
+      code: ['', [Validators.required, Validators.pattern(/^\d{6}$/)]]
+    });
+  }
+
+  onSendCode() {
+    if (this.credentialsForm.invalid) return;
+    
+    // Demo: enviar código
+    alert('Código enviado a tu celular: 123456');
+    this.step = 2;
+  }
+
+  async onLogin() {
+    if (this.codeForm.invalid) return;
+
+    const { identifier, password } = this.credentialsForm.value;
+    const { code } = this.codeForm.value;
+
+    // Validar credenciales demo
+    if (identifier === '87654321' && password === 'conductor123' && code === '123456') {
+      // ⭐ SOLICITAR PERMISOS GPS
+      try {
+        const permission = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+        
+        if (permission.state === 'denied') {
+          alert('Debes permitir el acceso a la ubicación para usar la app de conductores');
+          return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+          () => {
+            alert('¡Bienvenido conductor! Ubicación activada');
+            this.driverService.login(identifier, password, code);
+            this.router.navigate(['/driver/map']);
+          },
+          (error) => {
+            if (error.code === error.PERMISSION_DENIED) {
+              alert('Debes permitir el acceso a la ubicación para continuar');
+            } else {
+              alert('No se pudo obtener la ubicación. Intenta más tarde');
+              this.router.navigate(['/driver/map']);
+            }
+          },
+          { enableHighAccuracy: true, timeout: 10000 }
+        );
+      } catch (error) {
+        // Fallback para navegadores sin Permissions API
+        navigator.geolocation.getCurrentPosition(
+          () => {
+            this.driverService.login(identifier, password, code);
+            this.router.navigate(['/driver/map']);
+          },
+          () => {
+            alert('No se pudo acceder a la ubicación');
+            this.router.navigate(['/driver/map']);
+          }
+        );
+      }
+    } else {
+      alert('Credenciales incorrectas. Demo: DNI 87654321, Pass conductor123, Código 123456');
+    }
+  }
+}
+```
+
+---
+
+## 🗺️ COMPONENTE 4: DRIVER-MAP (Panel Colapsable) ⭐⭐
+
+### driver-map.component.ts
+```typescript
+@Component({
+  selector: 'app-driver-map',
+  templateUrl: './driver-map.component.html',
+  styleUrls: ['./driver-map.component.css']
+})
+export class DriverMapComponent implements OnInit, OnDestroy, AfterViewInit {
+  private map!: mapboxgl.Map;
+  private busMarker?: mapboxgl.Marker;
+  private watchId?: number;
+
+  driverData: any;
+  isOnDuty = false;
+  isTracking = false;
+  showStatsPanel = false; // ⭐ Oculto por defecto
+  
+  passengerCount = 0;
+  totalCollected = 0;
+  currentSpeed = 0;
+  tripDistance = 0;
+  userPosition: { lat: number; lng: number } | null = null;
+
+  readonly MAPBOX_TOKEN = 'pk.eyJ1IjoibHVjay1wYXN0b3IiLCJhIjoiY21oOXhjczdsMDBkZjJybjFpam9oMG1qbCJ9.0Q8otsUabn_2ZQVouvfiJw';
+
+  constructor(
+    private driverService: DriverService,
+    private wsService: WebSocketService,
+    private router: Router
+  ) {}
+
+  ngOnInit() {
+    this.driverData = this.driverService.getCurrentDriver();
+    
+    // Conectar WebSocket
+    this.wsService.connect();
+    this.wsService.driverConnect({
+      placa: this.driverData.placa,
+      ruta: this.driverData.numeroRuta,
+      driverName: `${this.driverData.nombres} ${this.driverData.apellidos}`
+    });
+
+    // Escuchar pasajeros
+    this.wsService.onPassengerBoarded().subscribe(event => {
+      if (event) {
+        this.passengerCount = event.totalPassengers;
+        this.totalCollected = event.totalCollected;
+        
+        // ⭐ Expandir panel automáticamente
+        if (!this.showStatsPanel && this.isOnDuty) {
+          this.showStatsPanel = true;
+        }
+
+        alert(`${event.adultos + event.escolares} pasajero(s) - S/ ${event.total.toFixed(2)}`);
+      }
+    });
+  }
+
+  ngAfterViewInit() {
+    this.initMap();
+  }
+
+  ngOnDestroy() {
+    if (this.watchId) {
+      navigator.geolocation.clearWatch(this.watchId);
+    }
+    this.wsService.disconnect();
+  }
+
+  initMap() {
+    mapboxgl.accessToken = this.MAPBOX_TOKEN;
+
+    this.map = new mapboxgl.Map({
+      container: 'driver-map',
+      style: 'mapbox://styles/mapbox/streets-v12',
+      center: [-70.13, -15.5],
+      zoom: 14,
+      pitch: 45, // Vista 3D opcional
+      bearing: 0
+    });
+  }
+
+  handleToggleDuty(checked: boolean) {
+    this.isOnDuty = checked;
+    
+    if (checked) {
+      alert('¡En servicio! Tracking GPS iniciado');
+      this.startTracking();
+    } else {
+      alert('Fuera de servicio. Tracking detenido');
+      this.stopTracking();
+      this.passengerCount = 0;
+      this.totalCollected = 0;
+      this.tripDistance = 0;
+    }
+  }
+
+  startTracking() {
+    this.isTracking = true;
+    
+    this.watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        this.userPosition = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        };
+        
+        if (position.coords.speed) {
+          this.currentSpeed = Math.round(position.coords.speed * 3.6);
+        }
+
+        this.updateBusMarker();
+      },
+      (error) => console.error('Error tracking:', error),
+      { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
+    );
+  }
+
+  stopTracking() {
+    if (this.watchId) {
+      navigator.geolocation.clearWatch(this.watchId);
+      this.watchId = undefined;
+    }
+    this.isTracking = false;
+  }
+
+  updateBusMarker() {
+    if (!this.userPosition) return;
+
+    if (!this.busMarker) {
+      this.busMarker = new mapboxgl.Marker({ color: '#F59E0B' })
+        .setLngLat([this.userPosition.lng, this.userPosition.lat])
+        .addTo(this.map);
+    } else {
+      this.busMarker.setLngLat([this.userPosition.lng, this.userPosition.lat]);
+    }
+
+    this.map.flyTo({ center: [this.userPosition.lng, this.userPosition.lat] });
+  }
+
+  toggleStatsPanel() {
+    this.showStatsPanel = !this.showStatsPanel;
+  }
+
+  // Demo
+  simulatePassengerScan() {
+    this.wsService.sendPayment({
+      busPlaca: this.driverData.placa,
+      adultos: 1,
+      escolares: 0,
+      total: 1.0,
+      passengerId: 'DEMO'
+    });
+  }
+}
+```
+
+### driver-map.component.html
+```html
+<div class="h-screen w-screen relative overflow-hidden bg-gray-900">
+  <!-- Header (siempre visible) -->
+  <div class="absolute top-0 left-0 right-0 z-20 bg-gradient-to-r from-[#F59E0B] to-[#d97706] text-white">
+    <div class="p-4">
+      <div class="flex items-center gap-4 mb-3">
+        <button (click)="router.navigate(['/driver'])" class="p-2">← Atrás</button>
+        <div class="flex-1">
+          <h1 class="text-xl">{{ driverData?.numeroRuta }}</h1>
+          <p class="text-sm opacity-80">{{ driverData?.placa }}</p>
+        </div>
+      </div>
+
+      <!-- Duty Toggle -->
+      <div class="bg-white/10 backdrop-blur-sm rounded-lg p-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div [class.animate-pulse]="isOnDuty">📡</div>
+          <div>
+            <p class="text-sm">{{ isOnDuty ? 'En servicio' : 'Fuera de servicio' }}</p>
+            <p *ngIf="isOnDuty" class="text-xs opacity-75">GPS tracking activo</p>
+          </div>
+        </div>
+        <!-- Aquí va el switch toggle -->
+        <label class="relative inline-block w-12 h-6">
+          <input type="checkbox" [(ngModel)]="isOnDuty" (change)="handleToggleDuty($event.target.checked)" class="sr-only peer">
+          <span class="absolute cursor-pointer inset-0 bg-gray-400 rounded-full peer-checked:bg-green-500 transition-all"></span>
+          <span class="absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-all peer-checked:translate-x-6"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Map -->
+  <div id="driver-map" class="w-full h-full"></div>
+
+  <!-- ⭐ Panel Colapsable -->
+  <div *ngIf="isOnDuty" class="absolute bottom-0 left-0 right-0 z-20">
+    <!-- Barra toggle (siempre visible) -->
+    <div 
+      (click)="toggleStatsPanel()"
+      [class.rounded-t-2xl]="showStatsPanel"
+      class="bg-gradient-to-t from-[#F59E0B] to-[#d97706] text-white p-3 cursor-pointer shadow-lg">
+      <div class="flex items-center justify-between max-w-2xl mx-auto">
+        <div class="flex items-center gap-3">
+          <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+          <span class="text-sm">{{ showStatsPanel ? 'Ocultar información' : 'Ver más información' }}</span>
+        </div>
+        <div class="flex items-center gap-4">
+          <span class="text-xs">👥 {{ passengerCount }}</span>
+          <span class="text-xs">💰 S/ {{ totalCollected.toFixed(2) }}</span>
+          <svg [class.rotate-180]="showStatsPanel" class="transition-transform" width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M4 10L8 6L12 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel expandible -->
+    <div 
+      [class.max-h-0]="!showStatsPanel"
+      [class.max-h-96]="showStatsPanel"
+      class="bg-white overflow-hidden transition-all duration-300">
+      <div class="p-4 max-w-2xl mx-auto space-y-4">
+        <div class="grid grid-cols-3 gap-4">
+          <div class="text-center p-3 bg-blue-50 rounded-lg">
+            <div class="mb-2">👥</div>
+            <p class="text-2xl">{{ passengerCount }}</p>
+            <p class="text-xs text-gray-500">Pasajeros</p>
+          </div>
+          <div class="text-center p-3 bg-green-50 rounded-lg">
+            <div class="mb-2">💰</div>
+            <p class="text-2xl">S/ {{ totalCollected.toFixed(2) }}</p>
+            <p class="text-xs text-gray-500">Recaudado</p>
+          </div>
+          <div class="text-center p-3 bg-amber-50 rounded-lg">
+            <div class="mb-2">⏱️</div>
+            <p class="text-2xl">{{ currentSpeed }}</p>
+            <p class="text-xs text-gray-500">km/h</p>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
+          <div class="flex items-center gap-2">
+            <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+            <span class="text-sm text-gray-600">Tracking GPS activo</span>
+          </div>
+          <span class="text-xs text-gray-500">{{ tripDistance.toFixed(1) }} km</span>
+        </div>
+
+        <button (click)="simulatePassengerScan()" class="w-full py-2 border rounded-lg text-sm">
+          🔍 Simular escaneo QR via WebSocket (Demo)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Center button -->
+  <button 
+    *ngIf="isOnDuty"
+    (click)="userPosition && map.flyTo({ center: [userPosition.lng, userPosition.lat] })"
+    class="absolute bottom-20 right-4 z-10 w-12 h-12 bg-white shadow-lg rounded-full">
+    📍
+  </button>
+</div>
+```
+
+---
+
+## ✅ CHECKLIST
+
+- [ ] DriverWelcomeComponent
+- [ ] DriverRegisterComponent (4 pasos con datos de vehículo)
+- [ ] DriverLoginComponent (2FA + solicitud GPS)
+- [ ] DriverMapComponent con Mapbox
+- [ ] Panel colapsable implementado
+- [ ] WebSocket integrado
+- [ ] Simulación de pasajero funcionando
+
+---
+
+## ⏭️ SIGUIENTE: `05-WEBSOCKET.md`

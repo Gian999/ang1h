@@ -1,0 +1,672 @@
+# 👥 MÓDULO 01 - PASAJEROS CORE
+
+## 📋 Objetivo de este módulo
+Implementar los componentes principales del flujo de pasajeros: Welcome, Register, Login y MyCard.
+
+**⚠️ Requisito previo**: Haber completado `00-INICIO.md`
+
+---
+
+## 🗺️ ROUTING DE PASAJEROS
+
+### src/app/features/passenger/passenger-routing.module.ts
+```typescript
+import { NgModule } from '@angular/core';
+import { RouterModule, Routes } from '@angular/router';
+import { AuthGuard } from '../../core/guards/auth.guard';
+
+import { WelcomeComponent } from './components/welcome/welcome.component';
+import { RegisterComponent } from './components/register/register.component';
+import { LoginComponent } from './components/login/login.component';
+import { MyCardComponent } from './components/my-card/my-card.component';
+
+const routes: Routes = [
+  { path: 'welcome', component: WelcomeComponent },
+  { path: 'register', component: RegisterComponent },
+  { path: 'login', component: LoginComponent },
+  { path: 'card', component: MyCardComponent, canActivate: [AuthGuard] }
+];
+
+@NgModule({
+  imports: [RouterModule.forChild(routes)],
+  exports: [RouterModule]
+})
+export class PassengerRoutingModule { }
+```
+
+---
+
+## 📱 COMPONENTE 1: WELCOME
+
+### welcome.component.ts
+```typescript
+import { Component } from '@angular/core';
+import { Router } from '@angular/router';
+
+@Component({
+  selector: 'app-welcome',
+  templateUrl: './welcome.component.html'
+})
+export class WelcomeComponent {
+  constructor(private router: Router) {}
+
+  onRegister() {
+    this.router.navigate(['/register']);
+  }
+
+  onLogin() {
+    this.router.navigate(['/login']);
+  }
+
+  onDriverMode() {
+    this.router.navigate(['/driver']);
+  }
+}
+```
+
+### welcome.component.html
+```html
+<div class="min-h-screen bg-gradient-to-br from-[#2563EB] to-[#1e40af] flex flex-col items-center justify-center p-6 text-white">
+  <!-- Logo / Icono -->
+  <div class="mb-8">
+    <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="1" y="3" width="15" height="13"></rect>
+      <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
+      <circle cx="5.5" cy="18.5" r="2.5"></circle>
+      <circle cx="18.5" cy="18.5" r="2.5"></circle>
+    </svg>
+  </div>
+
+  <!-- Título -->
+  <h1 class="text-4xl mb-3 text-center">Transporte Colectivo</h1>
+  <h2 class="text-2xl mb-8 text-center opacity-90">Juliaca</h2>
+
+  <!-- Descripción -->
+  <p class="text-center mb-12 opacity-80 max-w-md">
+    Tu tarjeta virtual para viajar en microbuses de forma rápida y segura
+  </p>
+
+  <!-- Características -->
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12 max-w-4xl w-full">
+    <div class="bg-white/10 backdrop-blur-sm rounded-lg p-6 text-center">
+      <svg class="mx-auto mb-3" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
+        <line x1="1" y1="10" x2="23" y2="10"></line>
+      </svg>
+      <p class="text-sm">Pago sin efectivo</p>
+    </div>
+    <div class="bg-white/10 backdrop-blur-sm rounded-lg p-6 text-center">
+      <svg class="mx-auto mb-3" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+        <circle cx="12" cy="10" r="3"></circle>
+      </svg>
+      <p class="text-sm">Ubicación en tiempo real</p>
+    </div>
+    <div class="bg-white/10 backdrop-blur-sm rounded-lg p-6 text-center">
+      <svg class="mx-auto mb-3" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+      </svg>
+      <p class="text-sm">Seguro y confiable</p>
+    </div>
+  </div>
+
+  <!-- Botones -->
+  <div class="w-full max-w-md space-y-3">
+    <button 
+      (click)="onRegister()"
+      class="w-full bg-white text-[#2563EB] py-4 rounded-lg hover:bg-gray-100 transition-colors">
+      Crear cuenta
+    </button>
+    <button 
+      (click)="onLogin()"
+      class="w-full bg-white/10 backdrop-blur-sm border-2 border-white text-white py-4 rounded-lg hover:bg-white/20 transition-colors">
+      Iniciar sesión
+    </button>
+  </div>
+
+  <!-- Link conductores -->
+  <div class="mt-8">
+    <button 
+      (click)="onDriverMode()"
+      class="text-sm opacity-75 hover:opacity-100 transition-opacity">
+      Acceso para conductores →
+    </button>
+  </div>
+</div>
+```
+
+---
+
+## 📝 COMPONENTE 2: REGISTER (3 PASOS)
+
+### register.component.ts
+```typescript
+import { Component } from '@angular/core';
+import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { Router } from '@angular/router';
+import { AuthService } from '../../../../core/services/auth.service';
+
+@Component({
+  selector: 'app-register',
+  templateUrl: './register.component.html'
+})
+export class RegisterComponent {
+  currentStep = 1;
+  totalSteps = 3;
+  
+  step1Form: FormGroup;
+  step2Form: FormGroup;
+  step3Form: FormGroup;
+
+  constructor(
+    private fb: FormBuilder,
+    private authService: AuthService,
+    private router: Router
+  ) {
+    this.step1Form = this.fb.group({
+      dni: ['', [Validators.required, Validators.pattern(/^\d{8}$/)]],
+      nombres: ['', Validators.required],
+      apellidos: ['', Validators.required],
+      fechaNacimiento: ['', Validators.required]
+    });
+
+    this.step2Form = this.fb.group({
+      email: ['', [Validators.required, Validators.email]],
+      celular: ['', [Validators.required, Validators.pattern(/^9\d{8}$/)]]
+    });
+
+    this.step3Form = this.fb.group({
+      password: ['', [Validators.required, Validators.minLength(6)]],
+      confirmPassword: ['', Validators.required],
+      acceptTerms: [false, Validators.requiredTrue]
+    });
+  }
+
+  get progress() {
+    return (this.currentStep / this.totalSteps) * 100;
+  }
+
+  nextStep() {
+    if (this.currentStep < this.totalSteps) {
+      this.currentStep++;
+    }
+  }
+
+  previousStep() {
+    if (this.currentStep > 1) {
+      this.currentStep--;
+    }
+  }
+
+  async onSubmit() {
+    if (this.step3Form.value.password !== this.step3Form.value.confirmPassword) {
+      alert('Las contraseñas no coinciden');
+      return;
+    }
+
+    const userData = {
+      ...this.step1Form.value,
+      ...this.step2Form.value,
+      password: this.step3Form.value.password
+    };
+
+    const success = await this.authService.register(userData);
+    if (success) {
+      this.router.navigate(['/card']);
+    }
+  }
+
+  onBack() {
+    this.router.navigate(['/welcome']);
+  }
+}
+```
+
+### register.component.html (Simplificado - expandir según necesidad)
+```html
+<div class="min-h-screen bg-[#F8FAFC] flex flex-col">
+  <!-- Header -->
+  <div class="bg-white border-b">
+    <div class="container max-w-2xl mx-auto p-4">
+      <div class="flex items-center gap-4">
+        <button (click)="onBack()" class="p-2">
+          ← Atrás
+        </button>
+        <div class="flex-1">
+          <h1 class="text-xl">Registro</h1>
+          <p class="text-sm text-gray-500">Paso {{ currentStep }} de {{ totalSteps }}</p>
+        </div>
+      </div>
+      <!-- Progress bar -->
+      <div class="mt-4 bg-gray-200 h-2 rounded-full overflow-hidden">
+        <div class="bg-[#2563EB] h-full transition-all" [style.width.%]="progress"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Steps -->
+  <div class="flex-1 container max-w-2xl mx-auto p-6">
+    <!-- Paso 1: Datos personales -->
+    <div *ngIf="currentStep === 1" class="space-y-4">
+      <h2 class="text-2xl mb-4">Datos personales</h2>
+      <form [formGroup]="step1Form">
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm mb-1">DNI</label>
+            <input 
+              type="text" 
+              formControlName="dni"
+              maxlength="8"
+              class="w-full p-3 border rounded-lg"
+              placeholder="12345678">
+          </div>
+          <div>
+            <label class="block text-sm mb-1">Nombres</label>
+            <input 
+              type="text" 
+              formControlName="nombres"
+              class="w-full p-3 border rounded-lg">
+          </div>
+          <div>
+            <label class="block text-sm mb-1">Apellidos</label>
+            <input 
+              type="text" 
+              formControlName="apellidos"
+              class="w-full p-3 border rounded-lg">
+          </div>
+          <div>
+            <label class="block text-sm mb-1">Fecha de nacimiento</label>
+            <input 
+              type="date" 
+              formControlName="fechaNacimiento"
+              class="w-full p-3 border rounded-lg">
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <!-- Paso 2: Contacto -->
+    <div *ngIf="currentStep === 2" class="space-y-4">
+      <h2 class="text-2xl mb-4">Contacto</h2>
+      <form [formGroup]="step2Form">
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm mb-1">Correo electrónico</label>
+            <input 
+              type="email" 
+              formControlName="email"
+              class="w-full p-3 border rounded-lg">
+          </div>
+          <div>
+            <label class="block text-sm mb-1">Celular</label>
+            <div class="flex gap-2">
+              <div class="bg-gray-100 p-3 rounded-lg">+51</div>
+              <input 
+                type="text" 
+                formControlName="celular"
+                maxlength="9"
+                class="flex-1 p-3 border rounded-lg"
+                placeholder="987654321">
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <!-- Paso 3: Seguridad -->
+    <div *ngIf="currentStep === 3" class="space-y-4">
+      <h2 class="text-2xl mb-4">Seguridad</h2>
+      <form [formGroup]="step3Form">
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm mb-1">Contraseña</label>
+            <input 
+              type="password" 
+              formControlName="password"
+              class="w-full p-3 border rounded-lg">
+          </div>
+          <div>
+            <label class="block text-sm mb-1">Confirmar contraseña</label>
+            <input 
+              type="password" 
+              formControlName="confirmPassword"
+              class="w-full p-3 border rounded-lg">
+          </div>
+          <div class="flex items-start gap-3">
+            <input 
+              type="checkbox" 
+              formControlName="acceptTerms"
+              class="mt-1">
+            <label class="text-sm">
+              Acepto los términos y condiciones del servicio
+            </label>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Footer buttons -->
+  <div class="p-6 bg-white border-t">
+    <div class="container max-w-2xl mx-auto flex gap-3">
+      <button 
+        *ngIf="currentStep > 1"
+        (click)="previousStep()"
+        class="flex-1 py-3 border rounded-lg">
+        Atrás
+      </button>
+      <button 
+        *ngIf="currentStep < totalSteps"
+        (click)="nextStep()"
+        [disabled]="currentStep === 1 && step1Form.invalid || currentStep === 2 && step2Form.invalid"
+        class="flex-1 py-3 bg-[#2563EB] text-white rounded-lg disabled:opacity-50">
+        Continuar
+      </button>
+      <button 
+        *ngIf="currentStep === totalSteps"
+        (click)="onSubmit()"
+        [disabled]="step3Form.invalid"
+        class="flex-1 py-3 bg-[#2563EB] text-white rounded-lg disabled:opacity-50">
+        Registrarme
+      </button>
+    </div>
+  </div>
+</div>
+```
+
+---
+
+## 🔐 COMPONENTE 3: LOGIN
+
+### login.component.ts
+```typescript
+import { Component } from '@angular/core';
+import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { Router } from '@angular/router';
+import { AuthService } from '../../../../core/services/auth.service';
+
+@Component({
+  selector: 'app-login',
+  templateUrl: './login.component.html'
+})
+export class LoginComponent {
+  loginForm: FormGroup;
+  showDemoCredentials = true;
+
+  constructor(
+    private fb: FormBuilder,
+    private authService: AuthService,
+    private router: Router
+  ) {
+    this.loginForm = this.fb.group({
+      identifier: ['', Validators.required],
+      password: ['', Validators.required],
+      remember: [false]
+    });
+  }
+
+  async onSubmit() {
+    if (this.loginForm.valid) {
+      const { identifier, password } = this.loginForm.value;
+      const success = await this.authService.login(identifier, password);
+      
+      if (success) {
+        this.router.navigate(['/card']);
+      }
+    }
+  }
+
+  onBack() {
+    this.router.navigate(['/welcome']);
+  }
+}
+```
+
+### login.component.html
+```html
+<div class="min-h-screen bg-[#F8FAFC] flex flex-col">
+  <div class="bg-white border-b">
+    <div class="container max-w-2xl mx-auto p-4">
+      <div class="flex items-center gap-4">
+        <button (click)="onBack()" class="p-2">← Atrás</button>
+        <h1 class="text-xl">Iniciar sesión</h1>
+      </div>
+    </div>
+  </div>
+
+  <div class="flex-1 container max-w-2xl mx-auto p-6 flex flex-col justify-center">
+    <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="space-y-4">
+      <div>
+        <label class="block text-sm mb-1">DNI o correo electrónico</label>
+        <input 
+          type="text" 
+          formControlName="identifier"
+          class="w-full p-3 border rounded-lg">
+      </div>
+
+      <div>
+        <label class="block text-sm mb-1">Contraseña</label>
+        <input 
+          type="password" 
+          formControlName="password"
+          class="w-full p-3 border rounded-lg">
+      </div>
+
+      <div class="flex items-center gap-2">
+        <input 
+          type="checkbox" 
+          formControlName="remember"
+          id="remember">
+        <label for="remember" class="text-sm">Recordar sesión</label>
+      </div>
+
+      <button 
+        type="submit"
+        [disabled]="loginForm.invalid"
+        class="w-full py-3 bg-[#2563EB] text-white rounded-lg disabled:opacity-50">
+        Iniciar sesión
+      </button>
+    </form>
+
+    <!-- Demo credentials -->
+    <div *ngIf="showDemoCredentials" class="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+      <p class="text-sm mb-2"><strong>Credenciales demo:</strong></p>
+      <p class="text-xs">DNI: <code>12345678</code></p>
+      <p class="text-xs">Contraseña: <code>demo123</code></p>
+    </div>
+  </div>
+</div>
+```
+
+---
+
+## 💳 COMPONENTE 4: MY CARD
+
+### my-card.component.ts
+```typescript
+import { Component, OnInit } from '@angular/core';
+import { Router } from '@angular/router';
+import { AuthService } from '../../../../core/services/auth.service';
+import { TransactionService } from '../../../../core/services/transaction.service';
+
+@Component({
+  selector: 'app-my-card',
+  templateUrl: './my-card.component.html'
+})
+export class MyCardComponent implements OnInit {
+  userName = '';
+  balance = 0;
+  cardNumber = '';
+  userId = '';
+
+  constructor(
+    private authService: AuthService,
+    private transactionService: TransactionService,
+    private router: Router
+  ) {}
+
+  ngOnInit() {
+    const user = this.authService.getCurrentUser();
+    if (user) {
+      this.userName = user.nombres;
+      this.userId = user.dni;
+      this.cardNumber = this.generateCardNumber(user.dni);
+    }
+    
+    this.balance = this.transactionService.calculateBalance();
+  }
+
+  generateCardNumber(dni: string): string {
+    return dni.replace(/(\d{4})/g, '$1 ').trim();
+  }
+
+  onRecharge() {
+    this.router.navigate(['/recharge']);
+  }
+
+  onScanQR() {
+    this.router.navigate(['/scan-qr']);
+  }
+
+  onViewMap() {
+    this.router.navigate(['/map']);
+  }
+
+  onMovements() {
+    this.router.navigate(['/movements']);
+  }
+
+  onProfile() {
+    this.router.navigate(['/profile']);
+  }
+}
+```
+
+### my-card.component.html
+```html
+<div class="min-h-screen bg-[#F8FAFC]">
+  <!-- Header -->
+  <div class="bg-gradient-to-br from-[#2563EB] to-[#1e40af] text-white pb-6">
+    <div class="container max-w-2xl mx-auto p-4">
+      <div class="flex items-center justify-between mb-6">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+          </div>
+          <div>
+            <p class="text-sm opacity-80">Hola,</p>
+            <p>{{ userName }}</p>
+          </div>
+        </div>
+        <button (click)="onProfile()" class="p-2">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="container max-w-2xl mx-auto px-4 -mt-4 pb-6 space-y-6">
+    <!-- Balance Card -->
+    <div class="bg-white rounded-2xl shadow-lg p-6">
+      <p class="text-sm text-gray-500 mb-2">Saldo disponible</p>
+      <p class="text-4xl mb-4">S/ {{ balance.toFixed(2) }}</p>
+      <p class="text-xs text-gray-400">Tarjeta •••• {{ cardNumber.slice(-4) }}</p>
+    </div>
+
+    <!-- Action buttons -->
+    <div class="grid grid-cols-2 gap-3">
+      <button 
+        (click)="onRecharge()"
+        class="h-auto py-4 bg-[#059669] text-white rounded-lg flex flex-col items-center gap-2">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+        <span>Recargar</span>
+      </button>
+      <button 
+        (click)="onScanQR()"
+        class="h-auto py-4 bg-[#2563EB] text-white rounded-lg flex flex-col items-center gap-2">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+          <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+          <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+          <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+        </svg>
+        <span>Escanear QR</span>
+      </button>
+    </div>
+
+    <!-- QR personal -->
+    <div class="bg-white rounded-2xl shadow p-6 flex flex-col items-center">
+      <p class="text-sm text-gray-500 mb-4">Mi código QR personal</p>
+      <!-- Aquí iría el QR code component -->
+      <div class="w-60 h-60 bg-gray-100 rounded flex items-center justify-center">
+        <p class="text-xs text-gray-400">QR: USER:{{ userId }}</p>
+      </div>
+    </div>
+
+    <!-- Quick actions -->
+    <div class="space-y-3">
+      <h3 class="text-lg px-2">Acciones rápidas</h3>
+      
+      <button 
+        (click)="onViewMap()"
+        class="w-full bg-white rounded-lg shadow p-4 flex items-center gap-4">
+        <div class="w-16 h-16 bg-blue-100 rounded flex items-center justify-center">
+          📍
+        </div>
+        <div class="flex-1 text-left">
+          <p class="mb-1">Ver mi ubicación</p>
+          <p class="text-xs text-gray-500">Mapa en tiempo real</p>
+        </div>
+      </button>
+
+      <button 
+        (click)="onMovements()"
+        class="w-full bg-white rounded-lg shadow p-4 flex items-center gap-4">
+        <div class="w-16 h-16 bg-gray-100 rounded flex items-center justify-center">
+          📋
+        </div>
+        <div class="flex-1 text-left">
+          <p class="mb-1">Ver movimientos</p>
+          <p class="text-xs text-gray-500">Historial de transacciones</p>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+```
+
+---
+
+## ✅ CHECKLIST DE ESTE MÓDULO
+
+- [ ] PassengerRoutingModule configurado
+- [ ] WelcomeComponent creado y funcional
+- [ ] RegisterComponent con 3 pasos implementado
+- [ ] Validaciones de formularios funcionando
+- [ ] LoginComponent creado
+- [ ] MyCardComponent creado
+- [ ] Navegación entre componentes funcionando
+- [ ] AuthService integrado
+- [ ] Datos demo funcionando
+
+---
+
+## ⏭️ SIGUIENTE PASO
+
+Una vez completado este módulo, continúa con:
+**`02-PASAJEROS-PAGO.md`** - ScanQR y PayFare (flujo de pago corregido)
+
+---
+
+**Módulo**: 01 - Pasajeros Core  
+**Proyecto**: Transporte Colectivo Inteligente - Juliaca, Perú 🇵🇪

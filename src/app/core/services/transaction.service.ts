@@ -1,10 +1,15 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, signal, inject } from '@angular/core';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { Observable, of, throwError } from 'rxjs';
+import { catchError, tap } from 'rxjs/operators';
 import { Transaction } from '../models/transaction.model';
+import { environment } from '../../../environments/environment';
 
 @Injectable({
   providedIn: 'root'
 })
 export class TransactionService {
+  private http = inject(HttpClient);
   private transactions = signal<Transaction[]>([]);
   private readonly STORAGE_KEY = 'tci_transactions';
 
@@ -28,6 +33,45 @@ export class TransactionService {
     return this.transactions;
   }
 
+  /**
+   * Cargar transacciones del usuario desde el backend
+   */
+  loadUserTransactions(userId: string): Observable<Transaction[]> {
+    return this.http.get<Transaction[]>(`${environment.apiUrl}/transactions/user/${userId}`)
+      .pipe(
+        tap(transactions => {
+          this.transactions.set(transactions);
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(transactions));
+        }),
+        catchError((error: HttpErrorResponse) => {
+          console.error('Error cargando transacciones:', error);
+          return of(this.transactions()); // Retornar cache local en caso de error
+        })
+      );
+  }
+
+  /**
+   * Crear nueva transacción
+   */
+  createTransaction(transaction: Omit<Transaction, 'id' | 'fecha'>): Observable<Transaction> {
+    return this.http.post<Transaction>(`${environment.apiUrl}/transactions`, transaction)
+      .pipe(
+        tap(newTransaction => {
+          const current = this.transactions();
+          const updated = [newTransaction, ...current];
+          this.transactions.set(updated);
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(updated));
+        }),
+        catchError((error: HttpErrorResponse) => {
+          console.error('Error creando transacción:', error);
+          return throwError(() => new Error(error.error?.message || 'Error al crear transacción'));
+        })
+      );
+  }
+
+  /**
+   * Agregar transacción localmente (fallback o demo)
+   */
   addTransaction(transaction: Transaction): void {
     const current = this.transactions();
     const updated = [transaction, ...current];
@@ -72,3 +116,4 @@ export class TransactionService {
     return daysDiff <= days;
   }
 }
+

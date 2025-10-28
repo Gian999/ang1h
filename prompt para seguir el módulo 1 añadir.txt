@@ -1,0 +1,1762 @@
+# PROMPT PARA MIGRACIÓN A ANGULAR 20 - Transporte Colectivo Inteligente Juliaca
+
+## 📋 CONTEXTO DEL PROYECTO
+
+Necesito migrar completamente una aplicación de **Transporte Colectivo Inteligente para Juliaca, Perú** de React a **Angular 20**. La aplicación está dirigida a pasajeros de microbuses con diseño mobile-first y versión web responsiva.
+
+### Objetivos de la aplicación:
+- Registro de usuarios con DNI peruano (8 dígitos)
+- Creación de tarjetas virtuales con QR único
+- Recarga de saldo mediante múltiples métodos
+- **Pago de pasajes mediante escaneo del QR del microbus** ⭐ IMPORTANTE
+- Consulta de movimientos/historial
+- Vista de mapa con ubicación en tiempo real (OpenLayers)
+- **Portal para conductores** con tracking GPS (Mapbox + OSRM)
+
+---
+
+## 🎨 ESPECIFICACIONES DE DISEÑO
+
+### Paleta de colores:
+- **Azul primario**: `#2563EB` (pasajeros)
+- **Verde secundario**: `#059669` (acciones positivas, recargas)
+- **Ámbar**: `#F59E0B` (conductores, alertas importantes)
+- **Fondo**: `#F8FAFC`
+- **Texto principal**: `#1F2937`
+- **Texto secundario**: `#6B7280`
+
+### Tipografía:
+- Familias: Inter, Roboto, system-ui, -apple-system
+- **NO usar clases de Tailwind para font-size, font-weight, line-height** a menos que sea explícitamente necesario
+- Usar tipografía definida en `globals.css`
+
+### Accesibilidad:
+- Elementos táctiles mínimo **44px × 44px**
+- Alto contraste WCAG AA
+- Textos legibles (mínimo 14px)
+
+### Tono comunicacional:
+- Español peruano formal pero cercano
+- Tono cívico/municipal
+- Mensajes claros y directos
+- Términos locales: "saldo", "pasaje", "microbus", "DNI", "celular"
+
+---
+
+## 🏗️ ARQUITECTURA ANGULAR 20
+
+### Estructura de carpetas sugerida:
+
+```
+src/
+├── app/
+│   ├── core/
+│   │   ├── services/
+│   │   │   ├── auth.service.ts
+│   │   │   ├── geolocation.service.ts
+│   │   │   ├── map.service.ts
+│   │   │   ├── transaction.service.ts
+│   │   │   ├── driver.service.ts
+│   │   │   └── bus.service.ts (NUEVO - para QR de microbus)
+│   │   ├── guards/
+│   │   │   ├── auth.guard.ts
+│   │   │   └── driver.guard.ts
+│   │   ├── interceptors/
+│   │   │   └── error.interceptor.ts
+│   │   └── models/
+│   │       ├── user.model.ts
+│   │       ├── driver.model.ts
+│   │       ├── transaction.model.ts
+│   │       ├── ticket.model.ts
+│   │       └── bus-data.model.ts (NUEVO)
+│   ├── shared/
+│   │   ├── components/
+│   │   │   ├── amount-selector/
+│   │   │   ├── balance-card/
+│   │   │   ├── dni-input/
+│   │   │   ├── map-controls/
+│   │   │   ├── numeric-stepper/
+│   │   │   ├── qr-code/
+│   │   │   ├── ticket/
+│   │   │   └── transaction-list/
+│   │   ├── directives/
+│   │   └── pipes/
+│   ├── features/
+│   │   ├── passenger/
+│   │   │   ├── components/
+│   │   │   │   ├── welcome/
+│   │   │   │   ├── register/
+│   │   │   │   ├── login/
+│   │   │   │   ├── my-card/
+│   │   │   │   ├── scan-qr/ ⭐ NUEVO
+│   │   │   │   ├── recharge/
+│   │   │   │   ├── pay-fare/
+│   │   │   │   ├── movements/
+│   │   │   │   ├── profile/
+│   │   │   │   └── map-view/
+│   │   │   ├── passenger-routing.module.ts
+│   │   │   └── passenger.module.ts
+│   │   └── driver/
+│   │       ├── components/
+│   │       │   ├── driver-welcome/
+│   │       │   ├── driver-register/
+│   │       │   ├── driver-login/
+│   │       │   └── driver-map/
+│   │       ├── driver-routing.module.ts
+│   │       └── driver.module.ts
+│   ├── app-routing.module.ts
+│   ├── app.component.ts
+│   └── app.module.ts
+├── assets/
+├── styles/
+│   └── globals.css (mantener estilos Tailwind v3.0)
+└── environments/
+    ├── environment.ts
+    └── environment.prod.ts
+```
+
+### Configuración de módulos:
+
+1. **AppModule**: Principal con configuración de rutas y providers globales
+2. **PassengerModule**: Lazy loading para módulo de pasajeros
+3. **DriverModule**: Lazy loading para módulo de conductores
+4. **SharedModule**: Componentes reutilizables exportados
+5. **CoreModule**: Servicios singleton (forRoot pattern)
+
+---
+
+## 🔄 FLUJO DE PAGO CORREGIDO ⭐⭐ MUY IMPORTANTE
+
+### ❌ NO IMPLEMENTAR (Flujo antiguo):
+~~Pasajero selecciona adultos/escolares → Genera su propio QR → Muestra al validador~~
+
+### ✅ IMPLEMENTAR (Flujo correcto):
+
+```
+1. Pasajero presiona "Escanear QR" en MyCard
+   ↓
+2. Se abre ScanQRComponent con cámara activa
+   ↓
+3. Pasajero escanea el QR FIJO del microbus
+   (QR impreso en la entrada del vehículo)
+   QR contiene: "BUS:ABC123:Ruta 5:VALID001"
+   ↓
+4. Sistema extrae datos:
+   - placa: "ABC123"
+   - ruta: "Ruta 5"  
+   - validador: "VALID001"
+   ↓
+5. Navega automáticamente a PayFareComponent
+   Con datos del bus en queryParams
+   ↓
+6. Pasajero selecciona adultos/escolares
+   ↓
+7. Presiona "Pagar S/ X.XX"
+   → Pago instantáneo, NO genera QR
+   → Descuenta saldo inmediatamente
+   ↓
+8. Muestra Ticket de confirmación
+```
+
+**Clave**: El pasajero **NO genera QR**, sino que **escanea el QR del microbus**.
+
+---
+
+## 📱 PANTALLAS Y COMPONENTES (PASAJEROS)
+
+### 1. **WelcomeComponent** (`/welcome`)
+- Vista inicial con logo y descripción
+- Botones: "Crear cuenta", "Iniciar sesión"
+- Enlace inferior: "Acceso para conductores →" (redirección a `/driver`)
+- Gradiente azul de fondo
+- Iconos: CreditCard, MapPin, Shield
+
+### 2. **RegisterComponent** (`/register`)
+- **Registro en 3 pasos** con barra de progreso
+- **Paso 1**: Datos personales (DNI, nombres, apellidos, fecha nacimiento)
+  - Componente `dni-input` con validación (8 dígitos numéricos)
+  - Validación: mayores de 12 años
+- **Paso 2**: Contacto (email, celular con prefijo +51)
+  - Celular: 9 dígitos
+  - Validación email formato correcto
+- **Paso 3**: Seguridad (contraseña, confirmación, términos)
+  - Mínimo 6 caracteres
+  - Checkbox de aceptación de términos
+- Navegación: Botón "Atrás" y "Continuar" / "Registrarme"
+
+### 3. **LoginComponent** (`/login`)
+- Input DNI o email
+- Input password
+- Checkbox "Recordar sesión"
+- Botón "Iniciar sesión"
+- Credenciales demo: DNI `12345678`, Password `demo123`
+
+### 4. **MyCardComponent** (`/card`) - Vista principal post-login
+- Header con saludo y nombre de usuario
+- **BalanceCard**: Muestra saldo, número de tarjeta (8 dígitos)
+- Botones principales:
+  - "Recargar" (verde #059669)
+  - **"Escanear QR"** ⭐ (azul #2563EB) - CAMBIO: Ya no dice "Pagar pasaje"
+- **QRCode**: Código QR único del usuario (formato: `USER:{dni}:{cardNumber}`)
+  - Tamaño: 240px
+  - Label: "Mi código QR personal"
+- **Acciones rápidas**:
+  1. **"Ver mi ubicación"** 🗺️
+     - Card con preview de mapa (imagen mini)
+     - Punto azul animado (pulse effect)
+     - Al click: navega a `/map`
+  2. "Ver movimientos" (historial)
+  3. "Vincular tarjeta física"
+
+### 5. **ScanQRComponent** (`/scan-qr`) ⭐⭐ NUEVO - MUY IMPORTANTE
+
+**Propósito**: Escanear el QR fijo del microbus (NO generar QR del pasajero)
+
+**UI Principal**:
+```typescript
+┌─────────────────────────────┐
+│ ← Escanear QR               │
+│   Código del microbus       │
+├─────────────────────────────┤
+│                             │
+│   ┌───────────────────┐     │
+│   │                   │     │
+│   │    📷 CÁMARA      │     │  ← Área de escaneo (simulada en demo)
+│   │                   │     │
+│   │   Apunta al QR    │     │
+│   │   del microbus    │     │
+│   └───────────────────┘     │
+│                             │
+├─────────────────────────────┤
+│ ℹ️ ¿Dónde encontrar el QR?  │
+│ • En la entrada del microbus│
+│ • En el validador del       │
+│   cobrador                  │
+│ • Cerca de la puerta        │
+│   principal                 │
+├─────────────────────────────┤
+│ [🔍 Simular escaneo (Demo)] │ ← Botón para testing
+└─────────────────────────────┘
+```
+
+**Funcionalidad**:
+
+1. **Modo real** (producción):
+   - Activar cámara del dispositivo
+   - Librería sugerida: `@zxing/ngx-scanner`
+   - Detectar QR en tiempo real
+   - Extraer datos del formato: `BUS:{placa}:{ruta}:{validador}`
+
+2. **Modo demo** (desarrollo):
+   - Botón "Simular escaneo"
+   - Datos demo: `BUS:ABC123:Ruta 5:VALID001`
+   - Animación de escaneo (1.5 segundos)
+
+3. **Al escanear exitosamente**:
+   ```typescript
+   const busData = parseBusQR(qrData);
+   // busData = {
+   //   placa: 'ABC123',
+   //   ruta: 'Ruta 5',
+   //   validador: 'VALID001'
+   // }
+   
+   this.router.navigate(['/pay-fare'], {
+     queryParams: {
+       placa: busData.placa,
+       ruta: busData.ruta,
+       validador: busData.validador
+     }
+   });
+   ```
+
+**Componente Angular**:
+```typescript
+@Component({
+  selector: 'app-scan-qr',
+  templateUrl: './scan-qr.component.html'
+})
+export class ScanQRComponent {
+  isScanning = false;
+  
+  constructor(
+    private router: Router,
+    private busService: BusService,
+    private toastr: ToastrService
+  ) {}
+  
+  onScanSuccess(qrData: string) {
+    try {
+      const busData = this.busService.parseBusQR(qrData);
+      this.toastr.success('¡QR escaneado exitosamente!');
+      
+      this.router.navigate(['/pay-fare'], {
+        queryParams: busData
+      });
+    } catch (error) {
+      this.toastr.error('QR inválido. Intenta de nuevo.');
+    }
+  }
+  
+  // Solo para demo
+  simulateScan() {
+    this.isScanning = true;
+    
+    setTimeout(() => {
+      this.onScanSuccess('BUS:ABC123:Ruta 5:VALID001');
+    }, 1500);
+  }
+}
+```
+
+**Servicio BusService**:
+```typescript
+@Injectable({ providedIn: 'root' })
+export class BusService {
+  parseBusQR(qrData: string): BusData {
+    // Formato: BUS:ABC123:Ruta 5:VALID001
+    const parts = qrData.split(':');
+    
+    if (parts[0] !== 'BUS' || parts.length < 4) {
+      throw new Error('Formato de QR inválido');
+    }
+    
+    return {
+      placa: parts[1],
+      ruta: parts[2],
+      validador: parts[3]
+    };
+  }
+}
+```
+
+**Estados de UI**:
+- **Inicial**: Muestra cámara inactiva con icono
+- **Escaneando**: Animación de bordes pulsantes azules
+- **Éxito**: Toast + navegación automática
+- **Error**: Toast de error + permite reintentar
+
+### 6. **RechargeComponent** (`/recharge`)
+- Selector de monto: S/5, S/10, S/20, S/50 (botones)
+- Input para "Otro monto"
+- Selector de método: Yape, Plin, Tarjeta, Agente
+- Botón "Recargar S/ {monto}"
+- Al completar: genera ticket y navega a `/ticket/recharge`
+
+### 7. **PayFareComponent** (`/pay-fare`) ⭐⭐ ACTUALIZADO - MUY IMPORTANTE
+
+**CAMBIO PRINCIPAL**: Ya NO genera QR del pasajero. Recibe datos del bus escaneado.
+
+**UI Actualizada**:
+
+```typescript
+┌──────────────────────────────┐
+│ ← Pagar pasaje               │
+│   Saldo: S/ 15.50            │
+├──────────────────────────────┤
+│ ┌──────────────────────────┐ │
+│ │ 🚌 ABC123    [Ruta 5]    │ │ ← Card con info del bus
+│ │ ✓ Validador: VALID001    │ │   (azul, gradiente)
+│ └──────────────────────────┘ │
+├──────────────────────────────┤
+│ ℹ️ Multipago activado        │
+│ Puedes pagar por varias      │
+│ personas en una operación    │
+├──────────────────────────────┤
+│ Selecciona los pasajeros     │
+│                              │
+│ Adultos                      │
+│ S/ 1.00 por persona          │
+│ [ - ]  [ 1 ]  [ + ]          │ ← NumericStepper
+│                              │
+│ ───────────────────          │
+│                              │
+│ Escolares                    │
+│ S/ 0.50 por persona          │
+│ [ - ]  [ 0 ]  [ + ]          │
+│                              │
+├──────────────────────────────┤
+│ Total de pasajeros: 1        │
+│ Total a pagar: S/ 1.00       │
+├──────────────────────────────┤
+│ [    Pagar S/ 1.00    ]      │ ← Botón verde #059669
+└──────────────────────────────┘   NO genera QR, paga directo
+```
+
+**Funcionalidad**:
+
+1. **OnInit**: Lee queryParams del router
+   ```typescript
+   ngOnInit() {
+     this.route.queryParams.subscribe(params => {
+       this.busData = {
+         placa: params['placa'] || 'DEMO123',
+         ruta: params['ruta'] || 'Ruta Demo',
+         validador: params['validador'] || 'VALID001'
+       };
+       
+       this.toastr.success(
+         `QR escaneado: ${this.busData.placa} - ${this.busData.ruta}`
+       );
+     });
+   }
+   ```
+
+2. **Card de información del bus** (siempre visible arriba):
+   - Fondo: Gradiente azul (#2563EB to #1e40af)
+   - Icono Bus blanco
+   - Placa en grande
+   - Badge ámbar con número de ruta
+   - CheckCircle + "Validador: {id}"
+
+3. **Selección de pasajeros** (igual que antes):
+   - NumericStepper para adultos (0-10)
+   - NumericStepper para escolares (0-10)
+   - Cálculo automático de total
+
+4. **Validaciones**:
+   ```typescript
+   canPay(): boolean {
+     const total = this.calculateTotal();
+     return total > 0 && total <= this.currentBalance;
+   }
+   
+   calculateTotal(): number {
+     return (this.adultos * 1.00) + (this.escolares * 0.50);
+   }
+   ```
+
+5. **Botón "Pagar"** ⭐ (NO "Generar QR"):
+   - Color verde (#059669)
+   - Texto: "Pagar S/ {total.toFixed(2)}"
+   - Disabled si saldo insuficiente o total === 0
+   - Al hacer click:
+     ```typescript
+     onPay() {
+       this.isProcessing = true;
+       
+       // Simular procesamiento
+       setTimeout(() => {
+         this.transactionService.addPayment({
+           adultos: this.adultos,
+           escolares: this.escolares,
+           total: this.calculateTotal(),
+           route: this.busData.ruta,
+           busPlaca: this.busData.placa
+         });
+         
+         this.toastr.success('¡Pago exitoso! Puedes abordar el microbus');
+         this.router.navigate(['/ticket/payment']);
+       }, 1000);
+     }
+     ```
+
+6. **NO hay vista de QR generado**: Se elimina completamente esa sección
+
+**Diferencias clave con versión anterior**:
+
+| Aspecto | Antes ❌ | Ahora ✅ |
+|---------|---------|---------|
+| Botón principal | "Generar QR de pago" | "Pagar S/ X.XX" |
+| Acción | Genera QR → Muestra QR | Paga directo |
+| Vista QR | Tiene pantalla QR | NO tiene, se eliminó |
+| Datos del bus | No se muestran | Card destacado arriba |
+| Confirmación | "Simular pago exitoso" | Pago real inmediato |
+
+### 8. **MovementsComponent** (`/movements`)
+- Lista de transacciones (TransactionList)
+- Filtros: Todos, Recargas, Pasajes
+- Cada item muestra:
+  - Icono según tipo
+  - Descripción
+  - Monto (verde si recarga, rojo si pago)
+  - Fecha/hora
+  - Badge de ruta (si es pasaje)
+
+### 9. **ProfileComponent** (`/profile`)
+- Datos del usuario (no editables en v1)
+- DNI, Nombres, Apellidos, Email, Celular
+- Botón "Cerrar sesión" (rojo)
+
+### 10. **MapViewComponent** (`/map`)
+**Integración con OpenLayers**:
+- Mostrar mapa de Juliaca centrado en: `lat: -15.5, lng: -70.13`
+- **Geolocalización en tiempo real**:
+  - `navigator.geolocation.watchPosition()` con `enableHighAccuracy: true`
+  - Actualización continua cada 5 segundos máximo
+- **Marker del usuario**:
+  - Punto azul (#2563EB) con borde blanco (4px)
+  - Efecto pulse animado (círculo expandiéndose)
+  - Centrado en posición actual
+- **Controles del mapa**:
+  - Posicionados arriba: Zoom +/- (top-20, right-4)
+  - Posicionados abajo: Botones de ubicación (bottom-6, right-4)
+  - Botón "Centrar en mi ubicación" (icono Locate)
+  - **Botón "Seguimiento automático"** (icono Navigation):
+    - Toggle on/off (azul cuando activo)
+    - Al activar: centra automáticamente el mapa en el usuario
+    - Icono con animate-pulse cuando activo
+- **Card informativo inferior**:
+  - Texto: "Ubicación en tiempo real - Toca el mapa para interactuar"
+  - **SE OCULTA cuando el usuario toca el mapa** (lógica invertida)
+  - Reaparece después de 3 segundos sin interacción
+  - Animación: `translate-y-full` cuando oculto
+- **Estados**:
+  - Loading: spinner + "Obteniendo tu ubicación..."
+  - Error: manejo de permisos denegados
+  - Activo: tracking continuo
+
+**Librerías requeridas**:
+```bash
+npm install ol @types/ol
+```
+
+**Importaciones OpenLayers**:
+```typescript
+import Map from 'ol/Map';
+import View from 'ol/View';
+import TileLayer from 'ol/layer/Tile';
+import OSM from 'ol/source/OSM';
+import { fromLonLat } from 'ol/proj';
+import Feature from 'ol/Feature';
+import Point from 'ol/geom/Point';
+import VectorLayer from 'ol/layer/Vector';
+import VectorSource from 'ol/source/Vector';
+import { Style, Circle, Fill, Stroke } from 'ol/style';
+```
+
+---
+
+## 🚌 PANTALLAS Y COMPONENTES (CONDUCTORES)
+
+### 1. **DriverWelcomeComponent** (`/driver`)
+- Diseño con gradiente **ámbar** (#F59E0B to #d97706)
+- Icono de Bus (grande)
+- Título: "Portal de Conductores"
+- Subtítulo: "Transporte Colectivo Inteligente"
+- 3 Cards informativos:
+  - "Tracking GPS" - Ubicación en tiempo real
+  - "Rutas OSRM" - Optimización de recorrido
+  - "Verificación" - Autenticación segura
+- Botones:
+  - "Iniciar sesión"
+  - "Registrar mi microbus"
+  - "Volver a modo pasajero" (ghost, vuelve a `/welcome`)
+
+### 2. **DriverRegisterComponent** (`/driver/register`)
+**Registro en 4 pasos** con progress bar:
+
+**Paso 1: Datos del conductor**
+- DNI (8 dígitos, componente dni-input)
+- Nombres
+- Apellidos
+- Número de licencia de conducir (formato: Q12345678)
+- Fecha de nacimiento
+
+**Paso 2: Datos de contacto**
+- Email
+- Celular (9 dígitos con prefijo +51)
+- Mensaje: "Se enviará un código de verificación a este número"
+
+**Paso 3: Datos del vehículo** ⭐
+- **Placa**: Input uppercase, validación regex `/^[A-Z0-9]{6,7}$/` (ej: ABC123)
+- **Modelo**: Texto libre (ej: Toyota Hiace)
+- **Año**: Number input (1990-2025)
+- **Color**: Texto libre
+- **Capacidad**: Number (pasajeros, 5-50)
+- **Número de ruta**: Texto (ej: "Ruta 5")
+- **Empresa de transporte**: Texto (ej: "Transportes Juliaca S.A.")
+
+**Paso 4: Seguridad**
+- Contraseña (mínimo 6 caracteres)
+- Confirmar contraseña
+- Checkbox: "Acepto los términos y condiciones para conductores y me comprometo a mantener activa la ubicación GPS durante el servicio"
+
+Navegación: Igual que PassengerRegister
+Color del tema: Ámbar (#F59E0B)
+
+### 3. **DriverLoginComponent** (`/driver/login`)
+**Login con verificación en 2 pasos** ⭐:
+
+**Paso 1**:
+- Input: DNI o correo electrónico
+- Input: Contraseña
+- Card informativo: "Verificación en dos pasos - Te enviaremos un código de 6 dígitos a tu celular registrado"
+- Botón: "Enviar código de verificación"
+
+**Paso 2**:
+- Input grande para código (6 dígitos numéricos)
+- Estilo: text-center, text-2xl, tracking-widest
+- Texto: "Código enviado a •••• {últimos 4 del celular}"
+- Botones: "Cambiar credenciales" y "Reenviar código"
+- Botón principal: "Iniciar sesión"
+
+**Credenciales demo**:
+- DNI: `87654321`
+- Password: `conductor123`
+- Código: `123456`
+
+Card de demo visible con credenciales
+
+### 4. **DriverMapComponent** (`/driver/map`) ⭐⭐ **MÁS IMPORTANTE**
+
+**Integración con Mapbox + OSRM**:
+
+**Token público de Mapbox**:
+```typescript
+const MAPBOX_TOKEN = 'pk.eyJ1IjoibHVjay1wYXN0b3IiLCJhIjoiY21oOXhjczdsMDBkZjJybjFpam9oMG1qbCJ9.0Q8otsUabn_2ZQVouvfiJw';
+```
+
+**Librerías requeridas**:
+```bash
+npm install mapbox-gl @types/mapbox-gl
+npm install @mapbox/polyline
+```
+
+**Configuración del mapa**:
+```typescript
+import mapboxgl from 'mapbox-gl';
+
+mapboxgl.accessToken = MAPBOX_TOKEN;
+
+const map = new mapboxgl.Map({
+  container: 'map', // id del div
+  style: 'mapbox://styles/mapbox/streets-v12',
+  center: [-70.13, -15.5], // Juliaca [lng, lat]
+  zoom: 14
+});
+```
+
+**Header del mapa**:
+- Título: {driverData.numeroRuta} (ej: "Ruta 5")
+- Subtítulo: {driverData.placa} (ej: "ABC123")
+- **Switch "En servicio"** (componente Switch de Angular Material o similar):
+  - Posición: Destacada en header
+  - Label: "En servicio" / "Fuera de servicio"
+  - Color: Verde (#059669) cuando activo
+  - Al activar:
+    - Inicia GPS tracking automático
+    - Toast: "¡En servicio! Tracking GPS iniciado"
+    - Cambia estado `isOnDuty = true`
+  - Al desactivar:
+    - Detiene GPS tracking
+    - Toast: "Fuera de servicio. Tracking detenido"
+    - Resetea contadores
+
+**Tracking GPS** ⭐:
+- **Obligatorio** cuando `isOnDuty === true`
+- `navigator.geolocation.watchPosition()` con:
+  - `enableHighAccuracy: true`
+  - `maximumAge: 1000` (1 segundo)
+  - `timeout: 5000`
+- Actualizar marker del bus en tiempo real
+- Capturar velocidad: `position.coords.speed * 3.6` (m/s a km/h)
+
+**Marker del bus**:
+- Círculo ámbar (#F59E0B) con borde blanco
+- Icono Navigation (rotado según dirección)
+- Efecto pulse (animate-ping)
+- Label flotante con velocidad actual si > 0 km/h
+
+**Ruta OSRM** (simulada en v1, lista para integración real):
+```typescript
+// Ejemplo de llamada a OSRM (comentada en v1, documentada para v2)
+const getRoute = async (start: [number, number], end: [number, number]) => {
+  const url = `https://router.project-osrm.org/route/v1/driving/${start[0]},${start[1]};${end[0]},${end[1]}?overview=full&geometries=geojson`;
+  // Fetch y dibujar en mapa con addLayer
+};
+```
+
+**Card de estadísticas inferior** (auto-oculta en 4 segundos):
+
+**Cuando está EN SERVICIO**:
+- **Header**:
+  - Título: "Ruta en curso"
+  - Badge: {driverData.numeroRuta} (ámbar)
+- **Info de ruta**:
+  - Card azul: "🗺️ Sigue la ruta marcada en el mapa"
+- **Estadísticas en grid (3 columnas)**:
+  1. **Pasajeros**: Número total
+     - Icono: Users (#2563EB)
+     - **NO hay botones +/-** ⭐ IMPORTANTE
+     - Se incrementa AUTOMÁTICAMENTE cuando el validador escanea QR de pasajero
+  2. **Recaudado**: S/ {totalCollected}
+     - Icono: TrendingUp (#059669)
+     - Se suma automáticamente: adultos * 1.00 + escolares * 0.50
+  3. **Velocidad**: {currentSpeed} km/h
+     - Icono: Clock (#F59E0B)
+     - Actualizado por GPS
+- **Footer**:
+  - Indicador: "🟢 Tracking GPS activo" (punto verde pulsante)
+  - Texto: "{tripDistance} km" (distancia recorrida)
+- **Botón demo** (solo para testing):
+  - Label: "🔍 Simular escaneo QR (Demo)"
+  - Al click: llama a `simulatePassengerScan(1, 0, 1.0)`
+  - Función:
+    ```typescript
+    simulatePassengerScan(adultos: number, escolares: number, amount: number) {
+      this.passengerCount += adultos + escolares;
+      this.totalCollected += amount;
+      this.toastr.success(
+        `${adultos + escolares} pasajero(s) registrado(s) - S/ ${amount.toFixed(2)}`
+      );
+    }
+    ```
+
+**Cuando está FUERA DE SERVICIO**:
+- Card centrado con:
+  - Icono Radio (gris)
+  - Texto: "Activa el servicio para comenzar"
+  - Subtexto: "El tracking GPS se iniciará automáticamente"
+  - Card informativo ámbar:
+    - "Ruta asignada: {numeroRuta}"
+    - "Los pasajeros se registrarán automáticamente cuando el validador escanee sus códigos QR" ⭐
+
+**Comportamiento de auto-ocultar**:
+- Al tocar el mapa: `showStats = false` después de 4 segundos
+- Header siempre visible (solo el switch y título)
+- Card de estadísticas se oculta: `translate-y-full`
+- Al tocar de nuevo: reaparece y reinicia timer
+
+**Botón flotante "Centrar ubicación"**:
+- Posición: `bottom-40 right-4`
+- Icono: Locate
+- Solo visible cuando `showStats === true`
+- Al click: centra el mapa en la ubicación actual del bus
+
+---
+
+## 🧩 COMPONENTES COMPARTIDOS (Shared)
+
+### 1. **AmountSelectorComponent**
+```typescript
+@Input() amounts: number[] = [5, 10, 20, 50];
+@Input() selectedAmount: number | null = null;
+@Output() amountChange = new EventEmitter<number>();
+```
+- Grid de botones con montos predefinidos
+- Input "Otro monto" con validación min/max
+- Botón seleccionado: borde azul grueso
+
+### 2. **BalanceCardComponent**
+```typescript
+@Input() balance: number = 0;
+@Input() cardNumber: string = '';
+```
+- Card con gradiente azul
+- Muestra saldo con S/ y 2 decimales
+- Número de tarjeta (formato: •••• •••• {últimos 4})
+
+### 3. **DNIInputComponent**
+```typescript
+@Input() value: string = '';
+@Input() error: string = '';
+@Output() valueChange = new EventEmitter<string>();
+```
+- Input numérico solo 8 dígitos
+- Validación en tiempo real
+- Mensaje de error debajo si existe
+
+### 4. **MapControlsComponent**
+```typescript
+@Input() isFollowMode: boolean = false;
+@Input() isLocating: boolean = false;
+@Output() centerUser = new EventEmitter<void>();
+@Output() zoomIn = new EventEmitter<void>();
+@Output() zoomOut = new EventEmitter<void>();
+@Output() toggleFollowMode = new EventEmitter<void>();
+```
+- Botones de Zoom +/- (posición: top-20 right-4)
+- Botones de ubicación (posición: bottom-6 right-4):
+  - Seguimiento automático (azul si activo, con pulse)
+  - Centrar ubicación (spinner si `isLocating`)
+
+### 5. **NumericStepperComponent**
+```typescript
+@Input() value: number = 0;
+@Input() min: number = 0;
+@Input() max: number = 99;
+@Input() label: string = '';
+@Input() price: number = 0;
+@Output() valueChange = new EventEmitter<number>();
+```
+- Botón "-" (disabled si value === min)
+- Display central con valor
+- Botón "+"
+- Label con precio: "{label} - S/ {price.toFixed(2)}"
+
+### 6. **QRCodeComponent**
+```typescript
+@Input() value: string = '';
+@Input() size: number = 200;
+@Input() label: string = '';
+```
+- Generar QR con librería `qrcode` o `angularx-qrcode`
+- Canvas responsive
+- Label centrado debajo
+- **USO**: Solo para mostrar el QR personal del pasajero en MyCard, NO para pago
+
+### 7. **TicketComponent**
+```typescript
+@Input() type: 'recarga' | 'pago' = 'recarga';
+@Input() amount: number = 0;
+@Input() items: { label: string; value: string }[] = [];
+@Input() transactionId: string = '';
+@Input() date: Date = new Date();
+```
+- Diseño de ticket con borde punteado superior
+- Icono según tipo (CheckCircle verde o Scan azul)
+- Lista de items
+- ID de transacción
+- Fecha formateada
+- Botón "Volver a inicio"
+
+### 8. **TransactionListComponent**
+```typescript
+@Input() transactions: Transaction[] = [];
+```
+- Lista con virtual scroll (si >20 items)
+- Cada item:
+  - Icono según tipo (ArrowDown verde, ArrowUp rojo, Link gris)
+  - Descripción y ruta (si aplica)
+  - Monto con color
+  - Fecha relativa ("Hace 2 horas", "Ayer", etc.)
+
+---
+
+## 📦 MODELOS DE DATOS (TypeScript Interfaces)
+
+### UserData
+```typescript
+interface UserData {
+  dni: string;
+  nombres: string;
+  apellidos: string;
+  fechaNacimiento: string;
+  email: string;
+  celular: string;
+  distrito: string;
+  password: string;
+}
+```
+
+### DriverData
+```typescript
+interface DriverData {
+  dni: string;
+  nombres: string;
+  apellidos: string;
+  licencia: string;
+  placa: string;
+  modelo: string;
+  año: string;
+  color: string;
+  capacidad: string;
+  numeroRuta: string;
+  empresaTransporte: string;
+  email: string;
+  celular: string;
+  password: string;
+}
+```
+
+### BusData ⭐ NUEVO
+```typescript
+interface BusData {
+  placa: string;      // ej: "ABC123"
+  ruta: string;       // ej: "Ruta 5"
+  validador: string;  // ej: "VALID001"
+}
+```
+
+### Transaction
+```typescript
+interface Transaction {
+  id: string;
+  type: 'recarga' | 'pasaje' | 'vinculacion';
+  amount: number;
+  date: Date;
+  description: string;
+  route?: string;      // solo para tipo 'pasaje'
+  busPlaca?: string;   // solo para tipo 'pasaje' ⭐ NUEVO
+  method?: 'yape' | 'plin' | 'tarjeta' | 'agente'; // solo para 'recarga'
+  adultos?: number;    // solo para 'pasaje' ⭐ NUEVO
+  escolares?: number;  // solo para 'pasaje' ⭐ NUEVO
+}
+```
+
+### TicketData
+```typescript
+interface TicketData {
+  type: 'recarga' | 'pago';
+  amount: number;
+  items?: { label: string; value: string }[];
+  transactionId: string;
+  date: Date;
+}
+```
+
+---
+
+## 🔧 SERVICIOS (Angular Services)
+
+### 1. **AuthService** (`auth.service.ts`)
+```typescript
+@Injectable({ providedIn: 'root' })
+export class AuthService {
+  private currentUserSubject = new BehaviorSubject<UserData | null>(null);
+  public currentUser$ = this.currentUserSubject.asObservable();
+  
+  register(userData: UserData): Observable<boolean>
+  login(dni: string, password: string): Observable<boolean>
+  logout(): void
+  isAuthenticated(): boolean
+  getCurrentUser(): UserData | null
+}
+```
+
+### 2. **DriverService** (`driver.service.ts`)
+```typescript
+@Injectable({ providedIn: 'root' })
+export class DriverService {
+  private currentDriverSubject = new BehaviorSubject<DriverData | null>(null);
+  public currentDriver$ = this.currentDriverSubject.asObservable();
+  
+  register(driverData: DriverData): Observable<boolean>
+  login(identifier: string, password: string, code: string): Observable<boolean>
+  sendVerificationCode(identifier: string): Observable<boolean>
+  logout(): void
+  isAuthenticated(): boolean
+  getCurrentDriver(): DriverData | null
+}
+```
+
+### 3. **BusService** ⭐ NUEVO (`bus.service.ts`)
+```typescript
+@Injectable({ providedIn: 'root' })
+export class BusService {
+  /**
+   * Parsea el QR del microbus
+   * Formato esperado: "BUS:{placa}:{ruta}:{validador}"
+   * Ejemplo: "BUS:ABC123:Ruta 5:VALID001"
+   */
+  parseBusQR(qrData: string): BusData {
+    const parts = qrData.split(':');
+    
+    if (parts[0] !== 'BUS' || parts.length < 4) {
+      throw new Error('Formato de QR inválido');
+    }
+    
+    return {
+      placa: parts[1],
+      ruta: parts[2],
+      validador: parts[3]
+    };
+  }
+  
+  /**
+   * Valida si un QR es de tipo BUS
+   */
+  isValidBusQR(qrData: string): boolean {
+    try {
+      this.parseBusQR(qrData);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  
+  /**
+   * Genera un QR de bus (para admin/conductor)
+   * En producción esto vendría del backend
+   */
+  generateBusQR(placa: string, ruta: string, validador: string): string {
+    return `BUS:${placa}:${ruta}:${validador}`;
+  }
+}
+```
+
+### 4. **GeolocationService** (`geolocation.service.ts`)
+```typescript
+@Injectable({ providedIn: 'root' })
+export class GeolocationService {
+  private positionSubject = new BehaviorSubject<GeolocationPosition | null>(null);
+  public position$ = this.positionSubject.asObservable();
+  
+  getCurrentPosition(): Promise<GeolocationPosition>
+  watchPosition(options?: PositionOptions): Observable<GeolocationPosition>
+  stopWatching(): void
+  checkPermissions(): Promise<PermissionState>
+}
+```
+
+### 5. **MapService** (`map.service.ts`)
+```typescript
+@Injectable({ providedIn: 'root' })
+export class MapService {
+  // Para OpenLayers (pasajeros)
+  createPassengerMap(containerId: string): Map
+  addUserMarker(map: Map, position: [number, number]): void
+  centerMap(map: Map, position: [number, number], zoom?: number): void
+  
+  // Para Mapbox (conductores)
+  createDriverMap(containerId: string, token: string): mapboxgl.Map
+  addBusMarker(map: mapboxgl.Map, position: [number, number]): mapboxgl.Marker
+  drawRoute(map: mapboxgl.Map, coordinates: [number, number][]): void
+  getOSRMRoute(start: [number, number], end: [number, number]): Observable<any>
+}
+```
+
+### 6. **TransactionService** (`transaction.service.ts`)
+```typescript
+@Injectable({ providedIn: 'root' })
+export class TransactionService {
+  private transactionsSubject = new BehaviorSubject<Transaction[]>([]);
+  public transactions$ = this.transactionsSubject.asObservable();
+  
+  addTransaction(transaction: Transaction): void
+  addPayment(paymentData: {
+    adultos: number;
+    escolares: number;
+    total: number;
+    route: string;
+    busPlaca: string;
+  }): void ⭐ NUEVO
+  getTransactions(): Transaction[]
+  getTransactionsByType(type: Transaction['type']): Transaction[]
+  calculateBalance(): number
+}
+```
+
+---
+
+## 🎯 RUTAS (Angular Routing)
+
+### AppRoutingModule
+```typescript
+const routes: Routes = [
+  { path: '', redirectTo: '/welcome', pathMatch: 'full' },
+  { path: 'welcome', component: WelcomeComponent },
+  { 
+    path: '', 
+    loadChildren: () => import('./features/passenger/passenger.module')
+      .then(m => m.PassengerModule),
+    canActivate: [AuthGuard]
+  },
+  { 
+    path: 'driver', 
+    loadChildren: () => import('./features/driver/driver.module')
+      .then(m => m.DriverModule)
+  },
+  { path: '**', redirectTo: '/welcome' }
+];
+```
+
+### PassengerRoutingModule
+```typescript
+const routes: Routes = [
+  { path: 'register', component: RegisterComponent },
+  { path: 'login', component: LoginComponent },
+  { path: 'card', component: MyCardComponent, canActivate: [AuthGuard] },
+  { path: 'scan-qr', component: ScanQRComponent, canActivate: [AuthGuard] }, ⭐ NUEVO
+  { path: 'recharge', component: RechargeComponent, canActivate: [AuthGuard] },
+  { path: 'pay-fare', component: PayFareComponent, canActivate: [AuthGuard] },
+  { path: 'movements', component: MovementsComponent, canActivate: [AuthGuard] },
+  { path: 'profile', component: ProfileComponent, canActivate: [AuthGuard] },
+  { path: 'map', component: MapViewComponent, canActivate: [AuthGuard] },
+  { path: 'ticket/:type', component: TicketComponent, canActivate: [AuthGuard] }
+];
+```
+
+### DriverRoutingModule
+```typescript
+const routes: Routes = [
+  { path: '', component: DriverWelcomeComponent },
+  { path: 'register', component: DriverRegisterComponent },
+  { path: 'login', component: DriverLoginComponent },
+  { path: 'map', component: DriverMapComponent, canActivate: [DriverGuard] }
+];
+```
+
+---
+
+## 🌐 INTEGRACIONES EXTERNAS
+
+### OpenLayers (Pasajeros - MapView)
+
+**Instalación**:
+```bash
+npm install ol @types/ol
+```
+
+**Configuración básica**:
+```typescript
+import Map from 'ol/Map';
+import View from 'ol/View';
+import TileLayer from 'ol/layer/Tile';
+import OSM from 'ol/source/OSM';
+import { fromLonLat } from 'ol/proj';
+
+// En el componente
+ngAfterViewInit() {
+  this.map = new Map({
+    target: 'map',
+    layers: [
+      new TileLayer({
+        source: new OSM()
+      })
+    ],
+    view: new View({
+      center: fromLonLat([-70.13, -15.5]), // Juliaca
+      zoom: 15
+    })
+  });
+}
+```
+
+**Añadir marker del usuario**:
+```typescript
+import Feature from 'ol/Feature';
+import Point from 'ol/geom/Point';
+import VectorLayer from 'ol/layer/Vector';
+import VectorSource from 'ol/source/Vector';
+import { Style, Circle, Fill, Stroke } from 'ol/style';
+
+const userMarker = new Feature({
+  geometry: new Point(fromLonLat([lng, lat]))
+});
+
+const vectorLayer = new VectorLayer({
+  source: new VectorSource({
+    features: [userMarker]
+  }),
+  style: new Style({
+    image: new Circle({
+      radius: 8,
+      fill: new Fill({ color: '#2563EB' }),
+      stroke: new Stroke({ color: '#fff', width: 3 })
+    })
+  })
+});
+
+map.addLayer(vectorLayer);
+```
+
+**Efecto pulse** (añadir con CSS):
+```css
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(2); opacity: 0; }
+}
+
+.user-marker-pulse {
+  animation: pulse 2s ease-out infinite;
+}
+```
+
+### Mapbox + OSRM (Conductores - DriverMap)
+
+**Instalación**:
+```bash
+npm install mapbox-gl @types/mapbox-gl
+npm install @mapbox/polyline
+```
+
+**Token**:
+```typescript
+const MAPBOX_TOKEN = 'pk.eyJ1IjoibHVjay1wYXN0b3IiLCJhIjoiY21oOXhjczdsMDBkZjJybjFpam9oMG1qbCJ9.0Q8otsUabn_2ZQVouvfiJw';
+```
+
+**Configuración**:
+```typescript
+import mapboxgl from 'mapbox-gl';
+
+ngAfterViewInit() {
+  mapboxgl.accessToken = this.MAPBOX_TOKEN;
+  
+  this.map = new mapboxgl.Map({
+    container: 'driver-map',
+    style: 'mapbox://styles/mapbox/streets-v12',
+    center: [-70.13, -15.5], // [lng, lat]
+    zoom: 14
+  });
+  
+  // Añadir controles
+  this.map.addControl(new mapboxgl.NavigationControl());
+}
+```
+
+**Añadir marker del bus**:
+```typescript
+const busMarker = new mapboxgl.Marker({
+  color: '#F59E0B'
+})
+  .setLngLat([-70.13, -15.5])
+  .addTo(this.map);
+
+// Actualizar posición en tiempo real
+this.geolocationService.position$.subscribe(position => {
+  if (position) {
+    busMarker.setLngLat([position.coords.longitude, position.coords.latitude]);
+    this.map.flyTo({ center: [position.coords.longitude, position.coords.latitude] });
+  }
+});
+```
+
+**OSRM Route** (ejemplo para integración futura):
+```typescript
+async getRoute(start: [number, number], end: [number, number]) {
+  const url = `https://router.project-osrm.org/route/v1/driving/${start[0]},${start[1]};${end[0]},${end[1]}?overview=full&geometries=geojson`;
+  
+  const response = await fetch(url);
+  const data = await response.json();
+  
+  if (data.routes && data.routes.length > 0) {
+    const route = data.routes[0].geometry;
+    
+    // Añadir capa de ruta al mapa
+    this.map.addLayer({
+      id: 'route',
+      type: 'line',
+      source: {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          geometry: route
+        }
+      },
+      paint: {
+        'line-color': '#F59E0B',
+        'line-width': 4,
+        'line-opacity': 0.8
+      }
+    });
+  }
+}
+```
+
+### QR Code Scanner (ScanQR Component) ⭐
+
+**Instalación**:
+```bash
+npm install @zxing/library @zxing/ngx-scanner
+```
+
+**Módulo**:
+```typescript
+import { ZXingScannerModule } from '@zxing/ngx-scanner';
+
+@NgModule({
+  imports: [
+    ZXingScannerModule
+  ]
+})
+```
+
+**Uso en componente**:
+```html
+<zxing-scanner
+  [enable]="isScanning"
+  (scanSuccess)="onScanSuccess($event)"
+  (scanError)="onScanError($event)"
+  (camerasFound)="onCamerasFound($event)"
+  [formats]="['QR_CODE']"
+></zxing-scanner>
+```
+
+```typescript
+onScanSuccess(qrData: string) {
+  if (this.busService.isValidBusQR(qrData)) {
+    const busData = this.busService.parseBusQR(qrData);
+    this.router.navigate(['/pay-fare'], { queryParams: busData });
+  } else {
+    this.toastr.error('QR inválido. Escanea el QR del microbus.');
+  }
+}
+```
+
+---
+
+## 📚 LIBRERÍAS Y DEPENDENCIAS
+
+### Dependencias principales:
+```json
+{
+  "dependencies": {
+    "@angular/animations": "^20.0.0",
+    "@angular/common": "^20.0.0",
+    "@angular/compiler": "^20.0.0",
+    "@angular/core": "^20.0.0",
+    "@angular/forms": "^20.0.0",
+    "@angular/platform-browser": "^20.0.0",
+    "@angular/platform-browser-dynamic": "^20.0.0",
+    "@angular/router": "^20.0.0",
+    "rxjs": "^7.8.0",
+    "tslib": "^2.6.0",
+    "zone.js": "^0.14.0",
+    
+    "ol": "^9.0.0",
+    "@types/ol": "^7.0.0",
+    
+    "mapbox-gl": "^3.0.0",
+    "@types/mapbox-gl": "^3.0.0",
+    "@mapbox/polyline": "^1.2.0",
+    
+    "@zxing/library": "^0.20.0",
+    "@zxing/ngx-scanner": "^18.0.0",
+    
+    "angularx-qrcode": "^18.0.0",
+    "date-fns": "^3.0.0"
+  }
+}
+```
+
+### Iconos:
+- Usar `lucide-angular` o `@ng-icons` con lucide icons
+- Iconos principales: CreditCard, MapPin, Shield, Bus, Navigation, Users, TrendingUp, Clock, ArrowLeft, ArrowRight, Scan, etc.
+
+---
+
+## 🎨 ESTILOS (Tailwind v3.0)
+
+**Mantener el archivo `globals.css` existente**
+
+Configuración adicional en `styles.css`:
+```css
+@import 'tailwindcss';
+
+/* Mantener tipografía base (NO usar clases de Tailwind para font) */
+
+/* Animaciones personalizadas */
+@keyframes pulse-slow {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.05);
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 3s ease-in-out infinite;
+}
+
+/* Mapbox styles */
+@import 'mapbox-gl/dist/mapbox-gl.css';
+
+/* OpenLayers styles */
+@import 'ol/ol.css';
+```
+
+---
+
+## ✅ VALIDACIONES Y LÓGICA DE NEGOCIO
+
+### Validaciones de formularios:
+
+**DNI**:
+- Exactamente 8 dígitos numéricos
+- Regex: `/^\d{8}$/`
+
+**Email**:
+- Formato estándar
+- Regex: `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`
+
+**Celular**:
+- 9 dígitos numéricos
+- Comienza con 9
+- Regex: `/^9\d{8}$/`
+
+**Placa (conductores)**:
+- 6-7 caracteres alfanuméricos
+- Uppercase automático
+- Regex: `/^[A-Z0-9]{6,7}$/`
+
+**Contraseña**:
+- Mínimo 6 caracteres
+- Sin restricciones adicionales en v1
+
+**Edad (registro)**:
+- Mínimo 12 años
+- Calcular desde `fechaNacimiento`
+
+**QR de microbus** ⭐:
+- Formato: `BUS:{placa}:{ruta}:{validador}`
+- Ejemplo válido: `BUS:ABC123:Ruta 5:VALID001`
+- Partes: 4 exactamente, separadas por `:`
+- Primera parte debe ser "BUS"
+
+### Lógica de saldo:
+
+```typescript
+// Validar saldo suficiente antes de pagar
+canPayFare(balance: number, total: number): boolean {
+  return balance >= total;
+}
+
+// Calcular total de pasaje
+calculateFareTotal(adultos: number, escolares: number): number {
+  return (adultos * 1.00) + (escolares * 0.50);
+}
+```
+
+### Generación de IDs:
+
+```typescript
+// Para transacciones
+generateTransactionId(): string {
+  return `TRX${Date.now().toString().slice(-8)}`;
+}
+
+// Para pagos
+generatePaymentId(): string {
+  return `PAY${Date.now().toString().slice(-8)}`;
+}
+```
+
+---
+
+## 🔐 GUARDS Y SEGURIDAD
+
+### AuthGuard
+```typescript
+@Injectable({ providedIn: 'root' })
+export class AuthGuard implements CanActivate {
+  constructor(
+    private authService: AuthService,
+    private router: Router
+  ) {}
+  
+  canActivate(): boolean {
+    if (this.authService.isAuthenticated()) {
+      return true;
+    }
+    this.router.navigate(['/login']);
+    return false;
+  }
+}
+```
+
+### DriverGuard
+```typescript
+@Injectable({ providedIn: 'root' })
+export class DriverGuard implements CanActivate {
+  constructor(
+    private driverService: DriverService,
+    private router: Router
+  ) {}
+  
+  canActivate(): boolean {
+    if (this.driverService.isAuthenticated()) {
+      return true;
+    }
+    this.router.navigate(['/driver/login']);
+    return false;
+  }
+}
+```
+
+---
+
+## 📱 NOTIFICACIONES (Toasts)
+
+Usar librería de notificaciones tipo Sonner o NGX-Toastr
+
+Ejemplos de mensajes:
+
+**Pasajeros**:
+- "¡Bienvenido {nombre}!"
+- "Recarga exitosa de S/ {monto}"
+- "¡QR escaneado exitosamente!" ⭐ NUEVO
+- "QR escaneado: {placa} - {ruta}" ⭐ NUEVO
+- "¡Pago exitoso! Puedes abordar el microbus" ⭐ ACTUALIZADO
+- "QR inválido. Escanea el QR del microbus" ⭐ NUEVO
+- "Ubicación encontrada"
+- "Modo seguimiento activado"
+
+**Conductores**:
+- "¡En servicio! Tracking GPS iniciado"
+- "Fuera de servicio. Tracking detenido"
+- "{n} pasajero(s) registrado(s) - S/ {monto}"
+- "Código de verificación enviado a tu celular"
+
+---
+
+## 🧪 DATOS DE DEMO
+
+### Pasajero
+- DNI: `12345678`
+- Password: `demo123`
+- Saldo inicial: S/ 15.50
+- Transacciones demo: 3-5 transacciones de ejemplo
+
+### Conductor
+- DNI: `87654321`
+- Password: `conductor123`
+- Código verificación: `123456`
+- Placa: `ABC123`
+- Ruta: `Ruta 5`
+- Empresa: `Transportes Juliaca S.A.`
+
+### QR de microbus demo ⭐
+```
+BUS:ABC123:Ruta 5:VALID001
+```
+
+---
+
+## 🎯 FLUJOS CLAVE CORREGIDOS
+
+### ✅ CORRECTO - Flujo de pago de pasaje:
+
+```
+1. Pasajero en MyCard → Click "Escanear QR"
+   ↓
+2. Se abre ScanQRComponent
+   ↓
+3. Pasajero apunta cámara al QR del microbus (en la entrada)
+   QR contiene: "BUS:ABC123:Ruta 5:VALID001"
+   ↓
+4. Sistema detecta y parsea QR:
+   - placa: "ABC123"
+   - ruta: "Ruta 5"
+   - validador: "VALID001"
+   ↓
+5. Toast: "¡QR escaneado exitosamente!"
+   ↓
+6. Navega automáticamente a PayFareComponent
+   Con queryParams: ?placa=ABC123&ruta=Ruta%205&validador=VALID001
+   ↓
+7. PayFare muestra:
+   - Card azul con info del bus (placa, ruta, validador)
+   - Selección de adultos (1 por defecto)
+   - Selección de escolares (0 por defecto)
+   - Total calculado dinámicamente
+   ↓
+8. Pasajero ajusta cantidades
+   ↓
+9. Click "Pagar S/ {total}"
+   - Valida saldo suficiente
+   - Descuenta saldo inmediatamente
+   - NO genera QR, pago directo
+   ↓
+10. Toast: "¡Pago exitoso! Puedes abordar el microbus"
+    ↓
+11. Navega a TicketComponent con confirmación
+    ↓
+12. Backend (simulado):
+    - Registra transacción en pasajero
+    - Incrementa contador en DriverMap automáticamente:
+      * passengerCount += adultos + escolares
+      * totalCollected += total
+```
+
+### ❌ INCORRECTO - No implementar:
+
+```
+❌ Pasajero genera su propio QR
+❌ Validador escanea QR del pasajero
+❌ Conductor añade pasajeros manualmente con botones +/-
+```
+
+### ✅ Integración con Conductor (Backend en v2):
+
+```
+Cuando pasajero paga:
+1. Se registra transacción en TransactionService
+2. Se envía evento a backend (en v2):
+   {
+     busPlaca: "ABC123",
+     ruta: "Ruta 5",
+     adultos: 1,
+     escolares: 0,
+     total: 1.00,
+     timestamp: Date.now()
+   }
+3. Backend notifica al DriverMap via WebSocket (en v2)
+4. DriverMap actualiza automáticamente:
+   - passengerCount++
+   - totalCollected += 1.00
+5. Conductor ve actualización en tiempo real
+```
+
+**En v1 (demo)**: Usar botón "Simular escaneo QR" en DriverMap para testing
+
+---
+
+## 🚀 PRIORIDADES DE IMPLEMENTACIÓN
+
+### Fase 1 (Core):
+1. Estructura de módulos y routing
+2. Servicios base (Auth, Transaction, BusService ⭐)
+3. Componentes compartidos (DNI Input, Balance Card, etc.)
+4. Pantallas de pasajeros (Welcome, Register, Login, MyCard)
+
+### Fase 2 (Funcionalidades):
+1. **ScanQR Component** ⭐ PRIORIDAD ALTA
+2. **PayFare actualizado** ⭐ PRIORIDAD ALTA
+3. Recharge con lógica completa
+4. Movements y Profile
+5. Ticket component
+6. Guards y navegación protegida
+
+### Fase 3 (Mapas - Pasajeros):
+1. GeolocationService
+2. MapService con OpenLayers
+3. MapView component
+4. MapControls component
+5. Integración de tracking en tiempo real
+
+### Fase 4 (Conductores):
+1. DriverService
+2. DriverWelcome, DriverRegister, DriverLogin
+3. DriverMap con Mapbox
+4. Integración GPS tracking
+5. Sistema de auto-actualización de pasajeros
+6. Preparación para OSRM (documentado pero sin implementar)
+
+---
+
+## 📝 NOTAS IMPORTANTES
+
+1. **NO usar clases de Tailwind** para `font-size`, `font-weight`, `line-height` excepto si es necesario
+2. **Mapbox token es público** - OK para desarrollo, rotarlo en producción
+3. **OSRM**: Dejar preparado pero comentado para integración futura
+4. **LocalStorage**: Usar para persistencia temporal en v1
+5. **Validador**: Simular con botón demo en DriverMap
+6. **Responsive**: Mobile-first, pero funcional en desktop
+7. **Accesibilidad**: Mínimo 44px para todos los botones interactivos
+8. **Performance**: Lazy loading de módulos, virtual scroll en listas largas
+9. **QR del microbus**: En producción serán QR físicos impresos, en v1 simular con botón ⭐
+10. **Flujo de pago**: Pasajero ESCANEA QR del bus, NO genera QR propio ⭐⭐
+
+---
+
+## 🎨 CONSIDERACIONES FINALES DE UX
+
+### Auto-ocultar UI:
+- **MapView**: Card inferior se oculta al tocar mapa (3-4 seg)
+- **DriverMap**: Card de stats se oculta al interactuar (4 seg)
+- Headers siempre visibles
+- Controles de mapa siempre accesibles
+
+### Feedback visual:
+- Spinners en estados de loading
+- Animaciones suaves (300ms transitions)
+- Toasts para confirmaciones
+- Disabled states claros
+- Errores en rojo debajo de inputs
+- **Animación de escaneo QR** con bordes pulsantes ⭐
+
+### Mobile-first:
+- Touch targets grandes
+- Grid responsive (grid-cols-1 en mobile, grid-cols-2+ en desktop)
+- Bottom navigation cuando aplique
+- Sticky headers
+- **Cámara en modo portrait** para escaneo QR ⭐
+
+---
+
+## ✅ CHECKLIST DE IMPLEMENTACIÓN
+
+### Estructura y Configuración:
+- [ ] Crear estructura de carpetas Angular 20
+- [ ] Configurar Tailwind v4.0
+- [ ] Crear modelos TypeScript (incluyendo BusData ⭐)
+- [ ] Implementar todos los servicios (incluyendo BusService ⭐)
+
+### Componentes Pasajeros:
+- [ ] WelcomeComponent
+- [ ] RegisterComponent (3 pasos)
+- [ ] LoginComponent
+- [ ] MyCardComponent (botón "Escanear QR" ⭐)
+- [ ] **ScanQRComponent** ⭐⭐ PRIORIDAD
+- [ ] **PayFareComponent** (actualizado con busData) ⭐⭐ PRIORIDAD
+- [ ] RechargeComponent
+- [ ] MovementsComponent
+- [ ] ProfileComponent
+- [ ] MapViewComponent (OpenLayers)
+
+### Componentes Conductores:
+- [ ] DriverWelcomeComponent
+- [ ] DriverRegisterComponent (4 pasos)
+- [ ] DriverLoginComponent (2FA)
+- [ ] DriverMapComponent (Mapbox, auto-actualización ⭐)
+
+### Componentes Compartidos:
+- [ ] AmountSelectorComponent
+- [ ] BalanceCardComponent
+- [ ] DNIInputComponent
+- [ ] MapControlsComponent
+- [ ] NumericStepperComponent
+- [ ] QRCodeComponent
+- [ ] TicketComponent
+- [ ] TransactionListComponent
+
+### Integraciones:
+- [ ] Integrar OpenLayers en MapView
+- [ ] Integrar Mapbox en DriverMap
+- [ ] **Integrar @zxing/ngx-scanner en ScanQR** ⭐⭐
+- [ ] Implementar GeolocationService con watchPosition
+
+### Lógica y Seguridad:
+- [ ] Crear guards (AuthGuard, DriverGuard)
+- [ ] Configurar routing completo (incluyendo /scan-qr ⭐)
+- [ ] Añadir sistema de notificaciones (toasts)
+- [ ] Implementar validaciones de formularios
+- [ ] **Implementar parseo de QR de microbus** ⭐
+
+### Testing y Finales:
+- [ ] Testing con datos demo
+- [ ] **Testing de flujo completo de escaneo y pago** ⭐⭐
+- [ ] Revisar responsive design
+- [ ] Verificar accesibilidad (contraste, tamaños táctiles)
+- [ ] Documentar código
+
+---
+
+## 🔄 DIFERENCIAS CON VERSIÓN ANTERIOR
+
+| Aspecto | Versión Anterior ❌ | Versión Nueva ✅ |
+|---------|---------------------|------------------|
+| **Botón en MyCard** | "Pagar pasaje" | "Escanear QR" |
+| **Flujo de pago** | Seleccionar → Generar QR → Mostrar | Escanear QR bus → Seleccionar → Pagar |
+| **QR generado** | Pasajero genera QR | Solo microbus tiene QR fijo |
+| **PayFare botón** | "Generar QR de pago" | "Pagar S/ X.XX" |
+| **PayFare vista QR** | Tiene pantalla QR | Eliminada completamente |
+| **Datos del bus** | No se muestran | Card destacado con info |
+| **ScanQR component** | No existía | Componente nuevo |
+| **BusService** | No existía | Servicio nuevo |
+| **Tiempo de pago** | ~15 segundos | ~8 segundos |
+
+---
+
+## 📞 SOPORTE Y DOCUMENTACIÓN
+
+### Archivos de referencia:
+1. Este prompt (PROMPT_ANGULAR_COPILOT.md)
+2. FLUJO_CORREGIDO.md - Documentación del flujo actualizado
+3. CHANGELOG.md - Historial de cambios
+4. Código React existente en `/screens` y `/components`
+
+### Preguntas frecuentes:
+
+**Q: ¿Por qué el pasajero ya no genera QR?**
+A: Es más rápido y práctico que el pasajero escanee un QR fijo del microbus al subir, en lugar de generar uno nuevo cada vez. El QR está impreso en la entrada del vehículo.
+
+**Q: ¿Cómo se sincronizan los pasajeros con el conductor?**
+A: En v1 es simulado. En v2 (producción) se usará WebSocket para notificar al conductor en tiempo real cuando un pasajero pague.
+
+**Q: ¿Qué pasa si el QR del microbus no funciona?**
+A: El sistema mostrará un error y permitirá al pasajero reintentar el escaneo. En producción habrá QR de respaldo.
+
+**Q: ¿El conductor puede agregar pasajeros manualmente?**
+A: No. El conductor solo ve estadísticas actualizadas automáticamente cuando los pasajeros pagan al validador.
+
+---
+
+**¿Alguna duda o necesitas más detalles sobre alguna sección específica?**
+
+Genera la aplicación completa en Angular 20 siguiendo EXACTAMENTE estas especificaciones. **Prioriza la implementación de ScanQRComponent y la actualización de PayFareComponent con el nuevo flujo de pago mediante escaneo del QR del microbus.**

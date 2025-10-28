@@ -1,0 +1,617 @@
+# 💳 MÓDULO 02 - PASAJEROS PAGO (ScanQR + PayFare)
+
+## 📋 Objetivo de este módulo
+Implementar el **flujo de pago corregido**: El pasajero escanea el QR del microbus y paga directamente.
+
+**⚠️ IMPORTANTE**: Este es el módulo MÁS CRÍTICO. El pasajero NO genera QR, sino que ESCANEA el QR del bus.
+
+**Requisito previo**: Haber completado `01-PASAJEROS-CORE.md`
+
+---
+
+## 🔄 FLUJO CORRECTO DE PAGO
+
+```
+1. Pasajero en MyCard → Click "Escanear QR"
+   ↓
+2. ScanQRComponent → Escanea QR fijo del microbus
+   QR: "BUS:ABC123:Ruta 5:VALID001"
+   ↓
+3. Sistema parsea:  placa="ABC123", ruta="Ruta 5", validador="VALID001"
+   ↓
+4. Navega a PayFareComponent con queryParams
+   ↓
+5. Pasajero selecciona adultos/escolares
+   ↓
+6. Click "Pagar S/ X.XX" → Pago directo (NO genera QR)
+   ↓
+7. WebSocket envía evento al conductor
+   ↓
+8. Navega a Ticket de confirmación
+```
+
+---
+
+## 📱 COMPONENTE 1: SCAN-QR ⭐⭐ PRIORIDAD MÁXIMA
+
+### Instalación de dependencias
+```bash
+npm install @zxing/library @zxing/ngx-scanner
+```
+
+### Importar en módulo
+```typescript
+// passenger.module.ts
+import { ZXingScannerModule } from '@zxing/ngx-scanner';
+
+@NgModule({
+  imports: [
+    // ...
+    ZXingScannerModule
+  ]
+})
+```
+
+### scan-qr.component.ts
+```typescript
+import { Component } from '@angular/core';
+import { Router } from '@angular/router';
+import { BusService } from '../../../../core/services/bus.service';
+
+@Component({
+  selector: 'app-scan-qr',
+  templateUrl: './scan-qr.component.html',
+  styleUrls: ['./scan-qr.component.css']
+})
+export class ScanQRComponent {
+  isScanning = false;
+  availableDevices: MediaDeviceInfo[] = [];
+  currentDevice: MediaDeviceInfo | undefined;
+  hasPermission = false;
+
+  constructor(
+    private router: Router,
+    private busService: BusService
+  ) {}
+
+  onCamerasFound(devices: MediaDeviceInfo[]): void {
+    this.availableDevices = devices;
+    this.hasPermission = true;
+    
+    // Seleccionar cámara trasera si está disponible
+    const backCamera = devices.find(device => 
+      /back|rear|environment/gi.test(device.label)
+    );
+    this.currentDevice = backCamera || devices[0];
+  }
+
+  onScanSuccess(qrData: string): void {
+    try {
+      // Validar y parsear QR del bus
+      if (!this.busService.isValidBusQR(qrData)) {
+        alert('QR inválido. Escanea el QR del microbus.');
+        return;
+      }
+
+      const busData = this.busService.parseBusQR(qrData);
+      
+      // Navegar a PayFare con los datos del bus
+      this.router.navigate(['/pay-fare'], {
+        queryParams: {
+          placa: busData.placa,
+          ruta: busData.ruta,
+          validador: busData.validador
+        }
+      });
+    } catch (error) {
+      alert('Error al escanear QR. Intenta de nuevo.');
+      console.error(error);
+    }
+  }
+
+  onScanError(error: Error): void {
+    console.error('Error al escanear:', error);
+  }
+
+  // Para testing - simular escaneo
+  simulateScan(): void {
+    this.isScanning = true;
+    
+    setTimeout(() => {
+      this.onScanSuccess('BUS:ABC123:Ruta 5:VALID001');
+    }, 1500);
+  }
+
+  onBack(): void {
+    this.router.navigate(['/card']);
+  }
+}
+```
+
+### scan-qr.component.html
+```html
+<div class="min-h-screen bg-gradient-to-b from-[#F8FAFC] to-white">
+  <!-- Header -->
+  <div class="bg-white border-b sticky top-0 z-10">
+    <div class="container max-w-2xl mx-auto p-4">
+      <div class="flex items-center gap-3">
+        <button (click)="onBack()" class="p-2 hover:bg-gray-100 rounded">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
+        <div>
+          <h1 class="text-2xl">Escanear QR</h1>
+          <p class="text-sm text-gray-500">Código del microbus</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="container max-w-2xl mx-auto p-4 space-y-6">
+    <!-- Scanner Area -->
+    <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
+      <div class="aspect-square relative bg-gray-900 flex items-center justify-center">
+        <!-- ZXing Scanner -->
+        <zxing-scanner
+          *ngIf="hasPermission && currentDevice"
+          [device]="currentDevice"
+          (scanSuccess)="onScanSuccess($event)"
+          (scanError)="onScanError($event)"
+          (camerasFound)="onCamerasFound($event)"
+          [formats]="['QR_CODE']"
+          class="w-full h-full">
+        </zxing-scanner>
+
+        <!-- Estado inicial -->
+        <div *ngIf="!hasPermission" class="text-center text-white">
+          <svg class="mx-auto mb-4 opacity-50" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+            <circle cx="12" cy="13" r="4"></circle>
+          </svg>
+          <p class="text-sm opacity-75">Apunta la cámara al código QR</p>
+          <p class="text-sm opacity-75">del microbus</p>
+        </div>
+
+        <!-- Scanning overlay -->
+        <div *ngIf="isScanning" class="absolute inset-0 flex items-center justify-center">
+          <div class="w-48 h-48 border-4 border-[#2563EB] rounded-lg animate-pulse"></div>
+        </div>
+
+        <!-- Corners -->
+        <div *ngIf="hasPermission" class="absolute inset-0 pointer-events-none">
+          <div class="absolute top-20 left-20 w-8 h-8 border-t-4 border-l-4 border-[#2563EB]"></div>
+          <div class="absolute top-20 right-20 w-8 h-8 border-t-4 border-r-4 border-[#2563EB]"></div>
+          <div class="absolute bottom-20 left-20 w-8 h-8 border-b-4 border-l-4 border-[#2563EB]"></div>
+          <div class="absolute bottom-20 right-20 w-8 h-8 border-b-4 border-r-4 border-[#2563EB]"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Instructions -->
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div class="flex gap-3">
+        <svg class="text-[#2563EB] flex-shrink-0 mt-0.5" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="16" x2="12" y2="12"></line>
+          <line x1="12" y1="8" x2="12.01" y2="8"></line>
+        </svg>
+        <div>
+          <h3 class="mb-2">¿Dónde encontrar el QR?</h3>
+          <ul class="text-sm text-gray-700 space-y-1">
+            <li>• En la entrada del microbus</li>
+            <li>• En el validador del cobrador</li>
+            <li>• Cerca de la puerta principal</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Demo button -->
+    <button
+      (click)="simulateScan()"
+      [disabled]="isScanning"
+      class="w-full py-4 bg-[#2563EB] text-white rounded-lg hover:bg-[#1e40af] disabled:opacity-50 flex items-center justify-center gap-2">
+      <svg *ngIf="!isScanning" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+        <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+        <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+        <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+      </svg>
+      <span>{{ isScanning ? 'Escaneando...' : 'Simular escaneo (Demo)' }}</span>
+    </button>
+
+    <!-- Demo info -->
+    <div class="bg-amber-50 border border-amber-200 rounded-lg p-3">
+      <p class="text-xs text-amber-900 text-center">
+        <strong>Modo Demo:</strong> Click en "Simular escaneo" para probar la funcionalidad
+      </p>
+    </div>
+  </div>
+</div>
+```
+
+---
+
+## 💰 COMPONENTE 2: PAY-FARE ⭐⭐ ACTUALIZADO (NO GENERA QR)
+
+### pay-fare.component.ts
+```typescript
+import { Component, OnInit } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
+import { BusData } from '../../../../core/models/bus-data.model';
+import { TransactionService } from '../../../../core/services/transaction.service';
+import { WebSocketService } from '../../../../core/services/websocket.service';
+import { AuthService } from '../../../../core/services/auth.service';
+
+@Component({
+  selector: 'app-pay-fare',
+  templateUrl: './pay-fare.component.html'
+})
+export class PayFareComponent implements OnInit {
+  busData: BusData | null = null;
+  adultos = 1;
+  escolares = 0;
+  currentBalance = 0;
+  isProcessing = false;
+
+  readonly TARIFA_ADULTO = 1.0;
+  readonly TARIFA_ESCOLAR = 0.5;
+
+  constructor(
+    private route: ActivatedRoute,
+    private router: Router,
+    private transactionService: TransactionService,
+    private wsService: WebSocketService,
+    private authService: AuthService
+  ) {}
+
+  ngOnInit() {
+    // Leer datos del bus desde queryParams
+    this.route.queryParams.subscribe(params => {
+      this.busData = {
+        placa: params['placa'] || 'DEMO123',
+        ruta: params['ruta'] || 'Ruta Demo',
+        validador: params['validador'] || 'VALID001'
+      };
+
+      console.log('QR escaneado:', this.busData);
+    });
+
+    this.currentBalance = this.transactionService.calculateBalance();
+  }
+
+  get total(): number {
+    return (this.adultos * this.TARIFA_ADULTO) + (this.escolares * this.TARIFA_ESCOLAR);
+  }
+
+  get canPay(): boolean {
+    return this.total > 0 && this.total <= this.currentBalance;
+  }
+
+  incrementAdultos() {
+    if (this.adultos < 10) this.adultos++;
+  }
+
+  decrementAdultos() {
+    if (this.adultos > 0) this.adultos--;
+  }
+
+  incrementEscolares() {
+    if (this.escolares < 10) this.escolares++;
+  }
+
+  decrementEscolares() {
+    if (this.escolares > 0) this.escolares--;
+  }
+
+  onPay() {
+    if (!this.canPay || !this.busData) return;
+
+    this.isProcessing = true;
+
+    // Simular procesamiento
+    setTimeout(() => {
+      // Enviar pago via WebSocket
+      this.wsService.sendPayment({
+        busPlaca: this.busData!.placa,
+        adultos: this.adultos,
+        escolares: this.escolares,
+        total: this.total,
+        passengerId: this.authService.getCurrentUser()?.dni || ''
+      });
+
+      // Registrar transacción local
+      this.transactionService.addPayment({
+        adultos: this.adultos,
+        escolares: this.escolares,
+        total: this.total,
+        route: this.busData!.ruta,
+        busPlaca: this.busData!.placa
+      });
+
+      alert('¡Pago exitoso! Puedes abordar el microbus');
+      this.router.navigate(['/card']);
+    }, 1000);
+  }
+
+  onBack() {
+    this.router.navigate(['/scan-qr']);
+  }
+}
+```
+
+### pay-fare.component.html
+```html
+<div class="min-h-screen bg-[#F8FAFC] flex flex-col">
+  <!-- Header -->
+  <div class="bg-white border-b">
+    <div class="container max-w-2xl mx-auto p-4">
+      <div class="flex items-center gap-4">
+        <button (click)="onBack()" class="p-2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
+        <div>
+          <h1 class="text-xl">Pagar pasaje</h1>
+          <p class="text-sm text-gray-500">Saldo: S/ {{ currentBalance.toFixed(2) }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flex-1 container max-w-2xl mx-auto p-6 space-y-6">
+    <!-- Info del microbus escaneado ⭐ NUEVO -->
+    <div class="bg-gradient-to-r from-[#2563EB] to-[#1e40af] text-white rounded-lg p-4">
+      <div class="flex items-center gap-3 mb-3">
+        <div class="bg-white/20 p-2 rounded-lg">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="1" y="3" width="15" height="13"></rect>
+            <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
+            <circle cx="5.5" cy="18.5" r="2.5"></circle>
+            <circle cx="18.5" cy="18.5" r="2.5"></circle>
+          </svg>
+        </div>
+        <div class="flex-1">
+          <p class="text-sm opacity-90">Microbus escaneado</p>
+          <p class="text-lg">{{ busData?.placa }}</p>
+        </div>
+        <div class="bg-[#F59E0B] px-3 py-1 rounded-full text-sm">
+          {{ busData?.ruta }}
+        </div>
+      </div>
+      <div class="flex items-center gap-2 text-sm opacity-90">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        <span>Validador: {{ busData?.validador }}</span>
+      </div>
+    </div>
+
+    <!-- Multipago info -->
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
+      <svg class="text-[#2563EB] flex-shrink-0 mt-1" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+        <circle cx="9" cy="7" r="4"></circle>
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+      </svg>
+      <div class="text-sm">
+        <p class="text-blue-900 mb-1"><strong>Multipago activado</strong></p>
+        <p class="text-blue-800">Puedes pagar por varias personas en una sola operación</p>
+      </div>
+    </div>
+
+    <!-- Selección de pasajeros -->
+    <div class="bg-white rounded-lg p-6 space-y-6">
+      <h3 class="text-lg">Selecciona los pasajeros</h3>
+
+      <!-- Adultos -->
+      <div class="space-y-3">
+        <div class="flex justify-between items-center">
+          <div>
+            <p>Adultos</p>
+            <p class="text-sm text-gray-500">S/ {{ TARIFA_ADULTO.toFixed(2) }} por persona</p>
+          </div>
+          <span class="text-[#2563EB]">S/ {{ (adultos * TARIFA_ADULTO).toFixed(2) }}</span>
+        </div>
+        <div class="flex items-center justify-center gap-4">
+          <button
+            (click)="decrementAdultos()"
+            [disabled]="adultos === 0"
+            class="w-12 h-12 bg-gray-100 rounded-lg disabled:opacity-50 hover:bg-gray-200">
+            -
+          </button>
+          <span class="text-2xl w-12 text-center">{{ adultos }}</span>
+          <button
+            (click)="incrementAdultos()"
+            [disabled]="adultos === 10"
+            class="w-12 h-12 bg-gray-100 rounded-lg disabled:opacity-50 hover:bg-gray-200">
+            +
+          </button>
+        </div>
+      </div>
+
+      <hr>
+
+      <!-- Escolares -->
+      <div class="space-y-3">
+        <div class="flex justify-between items-center">
+          <div>
+            <p>Escolares</p>
+            <p class="text-sm text-gray-500">S/ {{ TARIFA_ESCOLAR.toFixed(2) }} por persona</p>
+          </div>
+          <span class="text-[#059669]">S/ {{ (escolares * TARIFA_ESCOLAR).toFixed(2) }}</span>
+        </div>
+        <div class="flex items-center justify-center gap-4">
+          <button
+            (click)="decrementEscolares()"
+            [disabled]="escolares === 0"
+            class="w-12 h-12 bg-gray-100 rounded-lg disabled:opacity-50 hover:bg-gray-200">
+            -
+          </button>
+          <span class="text-2xl w-12 text-center">{{ escolares }}</span>
+          <button
+            (click)="incrementEscolares()"
+            [disabled]="escolares === 10"
+            class="w-12 h-12 bg-gray-100 rounded-lg disabled:opacity-50 hover:bg-gray-200">
+            +
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Total -->
+    <div class="bg-white rounded-lg p-6">
+      <div class="space-y-3">
+        <div class="flex justify-between">
+          <span class="text-gray-700">Total de pasajeros</span>
+          <span>{{ adultos + escolares }}</span>
+        </div>
+        <div class="flex justify-between">
+          <span>Total a pagar</span>
+          <span class="text-2xl text-[#2563EB]">S/ {{ total.toFixed(2) }}</span>
+        </div>
+        <div *ngIf="total > currentBalance" class="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-800">
+          Saldo insuficiente. Necesitas recargar S/ {{ (total - currentBalance).toFixed(2) }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer button -->
+  <div class="p-6 bg-white border-t">
+    <div class="container max-w-2xl mx-auto">
+      <button
+        (click)="onPay()"
+        [disabled]="!canPay || isProcessing"
+        class="w-full h-14 bg-[#059669] text-white rounded-lg disabled:opacity-50 hover:bg-[#047857] flex items-center justify-center gap-2">
+        <div *ngIf="isProcessing" class="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></div>
+        <span>{{ isProcessing ? 'Procesando pago...' : 'Pagar S/ ' + total.toFixed(2) }}</span>
+      </button>
+    </div>
+  </div>
+</div>
+```
+
+---
+
+## 🔧 SERVICIO: BusService
+
+### src/app/core/services/bus.service.ts
+```typescript
+import { Injectable } from '@angular/core';
+import { BusData } from '../models/bus-data.model';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class BusService {
+  
+  /**
+   * Valida si un QR es del formato correcto de microbus
+   * Formato esperado: "BUS:{placa}:{ruta}:{validador}"
+   */
+  isValidBusQR(qrData: string): boolean {
+    try {
+      this.parseBusQR(qrData);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Parsea el QR del microbus y extrae los datos
+   * @throws Error si el formato es inválido
+   */
+  parseBusQR(qrData: string): BusData {
+    const parts = qrData.split(':');
+    
+    if (parts[0] !== 'BUS') {
+      throw new Error('QR no es de tipo BUS');
+    }
+    
+    if (parts.length < 4) {
+      throw new Error('Formato de QR inválido');
+    }
+    
+    return {
+      placa: parts[1],
+      ruta: parts[2],
+      validador: parts[3]
+    };
+  }
+
+  /**
+   * Genera un QR de microbus (para admin/conductor)
+   * En producción esto vendría del backend
+   */
+  generateBusQR(placa: string, ruta: string, validador: string): string {
+    return `BUS:${placa}:${ruta}:${validador}`;
+  }
+}
+```
+
+---
+
+## 🧪 TESTING DEL FLUJO
+
+### Flujo completo de prueba:
+1. Login con DNI: `12345678`, Password: `demo123`
+2. En MyCard, click "Escanear QR"
+3. En ScanQR, click "Simular escaneo (Demo)"
+4. Verifica que navegue a PayFare con:
+   - Placa: ABC123
+   - Ruta: Ruta 5
+   - Validador: VALID001
+5. Selecciona 1 adulto, 0 escolares
+6. Verifica total: S/ 1.00
+7. Click "Pagar S/ 1.00"
+8. Verifica que se procese y navegue a MyCard
+9. Verifica que el saldo se haya descontado
+
+---
+
+## ❌ NO IMPLEMENTAR
+
+- ❌ Generación de QR por el pasajero
+- ❌ Vista de "Mostrar QR al cobrador"
+- ❌ Botón "Generar QR de pago"
+
+## ✅ SÍ IMPLEMENTAR
+
+- ✅ Escaneo del QR del microbus
+- ✅ Parseo del QR formato: "BUS:placa:ruta:validador"
+- ✅ Card con info del bus en PayFare
+- ✅ Pago directo sin generar QR
+- ✅ WebSocket para notificar al conductor
+
+---
+
+## ✅ CHECKLIST DE ESTE MÓDULO
+
+- [ ] BusService creado con parseBusQR()
+- [ ] ScanQRComponent creado
+- [ ] ZXing Scanner integrado
+- [ ] Simulación de escaneo funcionando
+- [ ] PayFareComponent actualizado (sin generación de QR)
+- [ ] Card de info del bus visible
+- [ ] Selección de adultos/escolares funcionando
+- [ ] Botón "Pagar S/ X.XX" funcionando
+- [ ] WebSocket enviando evento de pago
+- [ ] Navegación completa funcionando
+- [ ] Testing del flujo completo exitoso
+
+---
+
+## ⏭️ SIGUIENTE PASO
+
+Una vez completado este módulo, continúa con:
+**`03-PASAJEROS-EXTRAS.md`** - Recharge, Movements, Profile, MapView
+
+---
+
+**Módulo**: 02 - Pasajeros Pago (ScanQR + PayFare)  
+**Proyecto**: Transporte Colectivo Inteligente - Juliaca, Perú 🇵🇪

@@ -15,6 +15,8 @@ export interface TransactionDetails {
   adultos?: number; // Para pasajes
   escolares?: number; // Para pasajes
   ruta?: string; // Para pasajes
+  busPlaca?: string; // Para pasajes - NUEVO v1.03
+  validador?: string; // Para pasajes - NUEVO v1.03
   codigoRecarga?: string; // Para recargas en sede
 }
 
